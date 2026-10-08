@@ -1,11 +1,22 @@
-// ===============================
-// HE3AM.3AM.MUSIC - app.js
-// Audius REST API version
-// ===============================
+// ======================================================
+// HE3AM.3AM.MUSIC
+// Audius REST API
+// ======================================================
 
-const AUDIUS_API_KEY = "0x0ae28e18c315a491764d68a0f18ea5788c68559b";
+
+// ======================================================
+// CONFIG
+// ======================================================
+
+// فقط این مقدار را با API Key جدید خودت عوض کن.
+const AUDIUS_API_KEY = "YOUR_NEW_API_KEY";
 
 const STORAGE_KEY = "pulseMusic";
+
+
+// ======================================================
+// STATE
+// ======================================================
 
 let state = {
   playlists: [],
@@ -15,14 +26,19 @@ let state = {
 };
 
 let onlineTracks = [];
-let audio = new Audio();
+
+const audio = new Audio();
+
 let searchTimer = null;
 
-// ===============================
-// DOM HELPERS
-// ===============================
 
-const $ = (selector) => document.querySelector(selector);
+// ======================================================
+// HELPERS
+// ======================================================
+
+const $ = (selector) =>
+  document.querySelector(selector);
+
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -33,34 +49,65 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-// ===============================
-// LOCAL STORAGE
-// ===============================
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function createId() {
+  return (
+    Date.now().toString(36) +
+    Math.random()
+      .toString(36)
+      .slice(2, 9)
+  );
 }
 
-function loadState() {
+
+// ======================================================
+// LOCAL STORAGE
+// ======================================================
+
+function saveState() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved) {
-      const parsed = JSON.parse(saved);
-
-      state = {
-        ...state,
-        ...parsed
-      };
-    }
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(state)
+    );
   } catch (error) {
-    console.error("Could not load saved data:", error);
+    console.error(
+      "Could not save state:",
+      error
+    );
   }
 }
 
-// ===============================
-// ARTWORK / ARTIST HELPERS
-// ===============================
+
+function loadState() {
+  try {
+    const saved =
+      localStorage.getItem(
+        STORAGE_KEY
+      );
+
+    if (!saved) return;
+
+    const parsed =
+      JSON.parse(saved);
+
+    state = {
+      ...state,
+      ...parsed
+    };
+
+  } catch (error) {
+    console.error(
+      "Could not load state:",
+      error
+    );
+  }
+}
+
+
+// ======================================================
+// TRACK HELPERS
+// ======================================================
 
 function getArtwork(track) {
   return (
@@ -68,9 +115,11 @@ function getArtwork(track) {
     track?.artwork?.["480x480"] ||
     track?.artwork?.["150x150"] ||
     track?.artwork?.["1000x1000"] ||
+    track?.artwork ||
     "https://via.placeholder.com/500?text=HE3AM"
   );
 }
+
 
 function getArtist(track) {
   return (
@@ -81,29 +130,31 @@ function getArtist(track) {
   );
 }
 
+
 function getTrackTitle(track) {
-  return track?.title || "Unknown Track";
+  return (
+    track?.title ||
+    "Unknown Track"
+  );
 }
 
-// ===============================
-// PLAYLIST HELPERS
-// ===============================
+
+// ======================================================
+// PLAYLIST
+// ======================================================
 
 function getCurrentPlaylist() {
   return state.playlists.find(
-    (playlist) => playlist.id === state.currentPlaylistId
+    (playlist) =>
+      playlist.id ===
+      state.currentPlaylistId
   );
 }
 
-function createId() {
-  return (
-    Date.now().toString(36) +
-    Math.random().toString(36).slice(2, 8)
-  );
-}
 
 function createPlaylist(name) {
-  const cleanName = name.trim();
+  const cleanName =
+    name.trim();
 
   if (!cleanName) return;
 
@@ -113,127 +164,186 @@ function createPlaylist(name) {
     tracks: []
   };
 
-  state.playlists.push(playlist);
-  state.currentPlaylistId = playlist.id;
+  state.playlists.push(
+    playlist
+  );
+
+  state.currentPlaylistId =
+    playlist.id;
 
   saveState();
   renderAll();
 }
 
+
 function deletePlaylist(id) {
-  const playlist = state.playlists.find(
-    (item) => item.id === id
-  );
+  const playlist =
+    state.playlists.find(
+      (item) =>
+        item.id === id
+    );
 
   if (!playlist) return;
 
-  if (
-    !confirm(
+  const confirmed =
+    confirm(
       `Delete playlist "${playlist.name}"?`
-    )
+    );
+
+  if (!confirmed) return;
+
+  state.playlists =
+    state.playlists.filter(
+      (item) =>
+        item.id !== id
+    );
+
+  if (
+    state.currentPlaylistId ===
+    id
   ) {
-    return;
-  }
-
-  state.playlists = state.playlists.filter(
-    (item) => item.id !== id
-  );
-
-  if (state.currentPlaylistId === id) {
     state.currentPlaylistId =
-      state.playlists[0]?.id || null;
+      state.playlists[0]?.id ||
+      null;
   }
 
   saveState();
   renderAll();
 }
 
-function addTrackToPlaylist(track, playlistId) {
-  const playlist = state.playlists.find(
-    (item) => item.id === playlistId
-  );
+
+function addTrackToPlaylist(
+  track,
+  playlistId
+) {
+  const playlist =
+    state.playlists.find(
+      (item) =>
+        item.id === playlistId
+    );
 
   if (!playlist) return;
 
   const trackId =
     track.audiusId ||
     track.id ||
-    track.url ||
-    createId();
+    track.streamUrl;
 
-  const alreadyExists = playlist.tracks.some(
-    (item) =>
-      item.audiusId === trackId ||
-      item.id === trackId
-  );
+  const exists =
+    playlist.tracks.some(
+      (item) =>
+        item.audiusId ===
+          trackId ||
+        item.id === trackId
+    );
 
-  if (alreadyExists) {
-    alert("This song is already in the playlist.");
+  if (exists) {
+    alert(
+      "This song is already in the playlist."
+    );
+
     return;
   }
 
   playlist.tracks.push({
     id: createId(),
-    audiusId: track.audiusId || track.id || null,
-    title: track.title || "Unknown Track",
-    artist: track.artist || "Unknown Artist",
-    artwork: track.artwork || "",
-    streamUrl: track.streamUrl || "",
-    duration: track.duration || 0
+
+    audiusId:
+      track.audiusId ||
+      track.id ||
+      null,
+
+    title:
+      track.title ||
+      "Unknown Track",
+
+    artist:
+      track.artist ||
+      "Unknown Artist",
+
+    artwork:
+      track.artwork ||
+      "",
+
+    streamUrl:
+      track.streamUrl ||
+      "",
+
+    duration:
+      track.duration ||
+      0
   });
 
   saveState();
   renderAll();
 }
 
-// ===============================
-// AUDIUS
-// ===============================
+
+// ======================================================
+// AUDIUS SEARCH
+// ======================================================
 
 async function searchAudius(query) {
-  query = query.trim();
+  query =
+    query.trim();
 
   if (!query) return;
 
-  const section = $("#onlineSection");
-  const status = $("#onlineStatus");
-  const results = $("#onlineResults");
+  const section =
+    $("#onlineSection");
 
-  if (!section || !status || !results) {
-    console.error(
-      "Audius UI elements were not found."
-    );
+  const status =
+    $("#onlineStatus");
+
+  const results =
+    $("#onlineResults");
+
+  if (
+    !section ||
+    !status ||
+    !results
+  ) {
     return;
   }
 
-  section.classList.remove("hidden");
+  section.classList.remove(
+    "hidden"
+  );
 
-  status.textContent = "Searching Audius...";
+  status.textContent =
+    "Searching Audius...";
 
   results.innerHTML = `
-    <div style="padding:20px">
-      Searching for
-      <strong>${escapeHtml(query)}</strong>...
+    <div class="empty-state">
+      <h3>Searching...</h3>
+      <p>
+        Looking for
+        "${escapeHtml(query)}"
+      </p>
     </div>
   `;
 
   try {
-    const params = new URLSearchParams({
-      query: query,
-      limit: "15",
-      offset: "0",
-      sort_method: "relevant"
-    });
+    const params =
+      new URLSearchParams({
+        query,
+        limit: "15",
+        offset: "0",
+        sort_method: "relevant"
+      });
 
-    const response = await fetch(
-      `https://api.audius.co/v1/tracks/search?${params.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          "X-API-Key": AUDIUS_API_KEY
+    const response =
+      await fetch(
+        `https://api.audius.co/v1/tracks/search?${params.toString()}`,
+        {
+          method: "GET",
+
+          headers: {
+            "X-API-Key":
+              AUDIUS_API_KEY
+          }
         }
-      }
-    );
+      );
 
     if (!response.ok) {
       throw new Error(
@@ -241,11 +351,15 @@ async function searchAudius(query) {
       );
     }
 
-    const json = await response.json();
+    const json =
+      await response.json();
 
-    onlineTracks = Array.isArray(json.data)
-      ? json.data
-      : [];
+    onlineTracks =
+      Array.isArray(
+        json.data
+      )
+        ? json.data
+        : [];
 
     status.textContent =
       `${onlineTracks.length} result(s) found`;
@@ -264,143 +378,206 @@ async function searchAudius(query) {
       "Could not connect to Audius.";
 
     results.innerHTML = `
-      <div style="padding:20px">
-        <strong>
+      <div class="empty-state">
+
+        <h3>
           Audius is temporarily unavailable.
-        </strong>
+        </h3>
 
-        <br><br>
-
-        <small>
+        <p>
           ${escapeHtml(
             error?.message ||
-            "Unknown error"
+              "Unknown error"
           )}
-        </small>
+        </p>
+
       </div>
     `;
   }
 }
 
-// ===============================
+
+// ======================================================
 // AUDIUS STREAM
-// ===============================
+// ======================================================
 
 function streamUrl(track) {
-  if (!track?.id) return "";
+  if (!track?.id) {
+    return "";
+  }
 
   return (
-    `https://api.audius.co/v1/tracks/` +
-    `${encodeURIComponent(track.id)}` +
-    `/stream?app_name=HE3AM`
+    "https://api.audius.co/v1/tracks/" +
+    encodeURIComponent(
+      track.id
+    ) +
+    "/stream?app_name=HE3AM"
   );
 }
 
-// ===============================
+
+// ======================================================
 // RENDER ONLINE RESULTS
-// ===============================
+// ======================================================
 
 function renderOnline() {
-  const results = $("#onlineResults");
+  const results =
+    $("#onlineResults");
 
   if (!results) return;
 
   if (!onlineTracks.length) {
     results.innerHTML = `
-      <div style="padding:20px">
-        No songs found.
+      <div class="empty-state">
+        <h3>No songs found</h3>
+        <p>
+          Try another song or artist.
+        </p>
       </div>
     `;
 
     return;
   }
 
-  results.innerHTML = onlineTracks
-    .map((track, index) => {
-      const title = getTrackTitle(track);
-      const artist = getArtist(track);
-      const artwork = getArtwork(track);
+  results.innerHTML =
+    onlineTracks
+      .map(
+        (track, index) => {
 
-      return `
-        <div class="track-card online-track">
-          <img
-            class="track-cover"
-            src="${escapeHtml(artwork)}"
-            alt="${escapeHtml(title)}"
-            loading="lazy"
-          >
+          const title =
+            getTrackTitle(
+              track
+            );
 
-          <div class="track-info">
-            <div class="track-title">
-              ${escapeHtml(title)}
+          const artist =
+            getArtist(track);
+
+          const artwork =
+            getArtwork(track);
+
+          return `
+            <div class="track-card">
+
+              <img
+                class="track-cover"
+                src="${escapeHtml(
+                  artwork
+                )}"
+                alt="${escapeHtml(
+                  title
+                )}"
+                loading="lazy"
+              >
+
+              <div class="track-info">
+
+                <div class="track-title">
+                  ${escapeHtml(
+                    title
+                  )}
+                </div>
+
+                <div class="track-artist">
+                  ${escapeHtml(
+                    artist
+                  )}
+                </div>
+
+              </div>
+
+              <div class="track-actions">
+
+                <button
+                  class="play-online-btn"
+                  data-index="${index}"
+                  type="button"
+                  title="Play"
+                >
+                  ▶
+                </button>
+
+                <button
+                  class="add-online-btn"
+                  data-index="${index}"
+                  type="button"
+                  title="Add to playlist"
+                >
+                  +
+                </button>
+
+              </div>
+
             </div>
-
-            <div class="track-artist">
-              ${escapeHtml(artist)}
-            </div>
-          </div>
-
-          <div class="track-actions">
-
-            <button
-              class="play-online-btn"
-              data-index="${index}"
-              title="Play"
-            >
-              ▶
-            </button>
-
-            <button
-              class="add-online-btn"
-              data-index="${index}"
-              title="Add to playlist"
-            >
-              +
-            </button>
-
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+          `;
+        }
+      )
+      .join("");
 
   document
-    .querySelectorAll(".play-online-btn")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const index =
-          Number(button.dataset.index);
+    .querySelectorAll(
+      ".play-online-btn"
+    )
+    .forEach(
+      (button) => {
 
-        playAudiusTrack(
-          onlineTracks[index]
+        button.addEventListener(
+          "click",
+          () => {
+
+            const index =
+              Number(
+                button.dataset.index
+              );
+
+            playAudiusTrack(
+              onlineTracks[
+                index
+              ]
+            );
+          }
         );
-      });
-    });
+      }
+    );
 
   document
-    .querySelectorAll(".add-online-btn")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const index =
-          Number(button.dataset.index);
+    .querySelectorAll(
+      ".add-online-btn"
+    )
+    .forEach(
+      (button) => {
 
-        addOnlineTrack(
-          onlineTracks[index]
+        button.addEventListener(
+          "click",
+          () => {
+
+            const index =
+              Number(
+                button.dataset.index
+              );
+
+            addOnlineTrack(
+              onlineTracks[
+                index
+              ]
+            );
+          }
         );
-      });
-    });
+      }
+    );
 }
 
-// ===============================
+
+// ======================================================
 // ADD ONLINE TRACK
-// ===============================
+// ======================================================
 
 function addOnlineTrack(track) {
   if (!track) return;
 
   if (!state.playlists.length) {
+
     alert(
-      "Create a playlist first, then add the song."
+      "Create a playlist first."
     );
 
     return;
@@ -410,24 +587,43 @@ function addOnlineTrack(track) {
     getCurrentPlaylist() ||
     state.playlists[0];
 
-  const newTrack = {
-    audiusId: track.id,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    streamUrl: streamUrl(track),
-    duration: track.duration || 0
-  };
-
   addTrackToPlaylist(
-    newTrack,
+    {
+      audiusId:
+        track.id,
+
+      title:
+        getTrackTitle(
+          track
+        ),
+
+      artist:
+        getArtist(
+          track
+        ),
+
+      artwork:
+        getArtwork(
+          track
+        ),
+
+      streamUrl:
+        streamUrl(
+          track
+        ),
+
+      duration:
+        track.duration ||
+        0
+    },
     playlist.id
   );
 }
 
-// ===============================
-// PLAY AUDIUS TRACK
-// ===============================
+
+// ======================================================
+// PLAY TRACK
+// ======================================================
 
 function playAudiusTrack(track) {
   if (!track) return;
@@ -437,47 +633,62 @@ function playAudiusTrack(track) {
     streamUrl(track);
 
   if (!url) {
-    alert("Stream URL is not available.");
+    alert(
+      "Stream URL is not available."
+    );
+
     return;
   }
 
   state.currentTrack = {
     ...track,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    streamUrl: url
+
+    title:
+      getTrackTitle(
+        track
+      ),
+
+    artist:
+      getArtist(
+        track
+      ),
+
+    artwork:
+      getArtwork(
+        track
+      ),
+
+    streamUrl:
+      url
   };
 
   audio.src = url;
 
   audio
     .play()
-    .then(() => {
-      updatePlayer();
-    })
-    .catch((error) => {
-      console.error(
-        "Playback error:",
-        error
-      );
+    .catch(
+      (error) => {
 
-      alert(
-        "Could not play this song."
-      );
-    });
+        console.error(
+          "Playback error:",
+          error
+        );
+
+        alert(
+          "Could not play this song."
+        );
+      }
+    );
 
   updatePlayer();
 }
 
-// ===============================
-// PLAY LOCAL TRACK
-// ===============================
 
 function playLocalTrack(track) {
   if (!track) return;
 
   if (!track.streamUrl) {
+
     alert(
       "This track does not have a playable stream."
     );
@@ -485,63 +696,67 @@ function playLocalTrack(track) {
     return;
   }
 
-  state.currentTrack = track;
+  state.currentTrack =
+    track;
 
-  audio.src = track.streamUrl;
+  audio.src =
+    track.streamUrl;
 
   audio
     .play()
-    .then(() => {
-      updatePlayer();
-    })
-    .catch((error) => {
-      console.error(
-        "Playback error:",
-        error
-      );
-    });
+    .catch(
+      (error) => {
+        console.error(
+          "Playback error:",
+          error
+        );
+      }
+    );
 
   updatePlayer();
 }
 
-// ===============================
+
+// ======================================================
 // PLAYER
-// ===============================
+// ======================================================
 
 function updatePlayer() {
-  const track = state.currentTrack;
+  const track =
+    state.currentTrack;
 
   if (!track) return;
 
-  const playerTitle =
+  const title =
     $("#playerTitle");
 
-  const playerArtist =
+  const artist =
     $("#playerArtist");
 
-  const playerCover =
+  const cover =
     $("#playerCover");
 
-  if (playerTitle) {
-    playerTitle.textContent =
+  if (title) {
+    title.textContent =
       track.title ||
       "Unknown Track";
   }
 
-  if (playerArtist) {
-    playerArtist.textContent =
+  if (artist) {
+    artist.textContent =
       track.artist ||
       "Unknown Artist";
   }
 
-  if (playerCover) {
-    playerCover.src =
+  if (cover) {
+    cover.src =
       track.artwork ||
       getArtwork(track);
   }
 
   updatePlayButton();
 }
+
 
 function updatePlayButton() {
   const button =
@@ -555,41 +770,60 @@ function updatePlayButton() {
       : "❚❚";
 }
 
+
 function formatTime(seconds) {
-  if (!Number.isFinite(seconds)) {
+  if (
+    !Number.isFinite(
+      seconds
+    )
+  ) {
     return "0:00";
   }
 
-  const mins =
-    Math.floor(seconds / 60);
+  const minutes =
+    Math.floor(
+      seconds / 60
+    );
 
-  const secs =
-    Math.floor(seconds % 60)
+  const secondsPart =
+    Math.floor(
+      seconds % 60
+    )
       .toString()
       .padStart(2, "0");
 
-  return `${mins}:${secs}`;
+  return (
+    `${minutes}:${secondsPart}`
+  );
 }
+
 
 function updateProgress() {
   const progress =
     $("#progressBar");
 
-  const currentTime =
+  const current =
     $("#currentTime");
 
   const duration =
     $("#duration");
 
-  if (progress && audio.duration) {
+  if (
+    progress &&
+    Number.isFinite(
+      audio.duration
+    ) &&
+    audio.duration > 0
+  ) {
     progress.value =
-      (audio.currentTime /
-        audio.duration) *
-      100;
+      (
+        audio.currentTime /
+        audio.duration
+      ) * 100;
   }
 
-  if (currentTime) {
-    currentTime.textContent =
+  if (current) {
+    current.textContent =
       formatTime(
         audio.currentTime
       );
@@ -603,9 +837,10 @@ function updateProgress() {
   }
 }
 
-// ===============================
+
+// ======================================================
 // RENDER PLAYLISTS
-// ===============================
+// ======================================================
 
 function renderPlaylists() {
   const container =
@@ -614,10 +849,18 @@ function renderPlaylists() {
   if (!container) return;
 
   if (!state.playlists.length) {
+
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No playlists yet</h3>
-        <p>Create your first playlist.</p>
+
+        <h3>
+          No playlists yet
+        </h3>
+
+        <p>
+          Create your first playlist.
+        </p>
+
       </div>
     `;
 
@@ -626,95 +869,110 @@ function renderPlaylists() {
 
   container.innerHTML =
     state.playlists
-      .map((playlist) => {
-        return `
-          <div
-            class="playlist-card"
-            data-playlist-id="${escapeHtml(
-              playlist.id
-            )}"
-          >
+      .map(
+        (playlist) => {
 
-            <div class="playlist-card-content">
+          return `
+            <div
+              class="playlist-card"
+              data-playlist-id="${escapeHtml(
+                playlist.id
+              )}"
+            >
 
-              <h3>
-                ${escapeHtml(
-                  playlist.name
-                )}
-              </h3>
+              <div>
 
-              <p>
-                ${
-                  playlist.tracks.length
-                }
-                track(s)
-              </p>
+                <h3>
+                  ${escapeHtml(
+                    playlist.name
+                  )}
+                </h3>
+
+                <p>
+                  ${
+                    playlist.tracks
+                      .length
+                  }
+                  track(s)
+                </p>
+
+              </div>
+
+              <div class="playlist-card-actions">
+
+                <button
+                  class="open-playlist-btn"
+                  data-id="${escapeHtml(
+                    playlist.id
+                  )}"
+                  type="button"
+                >
+                  Open
+                </button>
+
+                <button
+                  class="delete-playlist-btn"
+                  data-id="${escapeHtml(
+                    playlist.id
+                  )}"
+                  type="button"
+                >
+                  Delete
+                </button>
+
+              </div>
 
             </div>
-
-            <div class="playlist-card-actions">
-
-              <button
-                class="open-playlist-btn"
-                data-id="${escapeHtml(
-                  playlist.id
-                )}"
-              >
-                Open
-              </button>
-
-              <button
-                class="delete-playlist-btn"
-                data-id="${escapeHtml(
-                  playlist.id
-                )}"
-              >
-                Delete
-              </button>
-
-            </div>
-
-          </div>
-        `;
-      })
+          `;
+        }
+      )
       .join("");
 
   document
     .querySelectorAll(
       ".open-playlist-btn"
     )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          state.currentPlaylistId =
-            button.dataset.id;
+    .forEach(
+      (button) => {
 
-          saveState();
-          renderAll();
-        }
-      );
-    });
+        button.addEventListener(
+          "click",
+          () => {
+
+            state.currentPlaylistId =
+              button.dataset.id;
+
+            saveState();
+            renderAll();
+          }
+        );
+      }
+    );
 
   document
     .querySelectorAll(
       ".delete-playlist-btn"
     )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          deletePlaylist(
-            button.dataset.id
-          );
-        }
-      );
-    });
+    .forEach(
+      (button) => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            deletePlaylist(
+              button.dataset.id
+            );
+          }
+        );
+      }
+    );
 }
 
-// ===============================
-// RENDER CURRENT PLAYLIST
-// ===============================
+
+// ======================================================
+// CURRENT PLAYLIST
+// ======================================================
 
 function renderCurrentPlaylist() {
   const container =
@@ -726,9 +984,14 @@ function renderCurrentPlaylist() {
     getCurrentPlaylist();
 
   if (!playlist) {
+
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No playlist selected</h3>
+
+        <h3>
+          No playlist selected
+        </h3>
+
       </div>
     `;
 
@@ -736,8 +999,10 @@ function renderCurrentPlaylist() {
   }
 
   if (!playlist.tracks.length) {
+
     container.innerHTML = `
       <div class="empty-state">
+
         <h3>
           ${escapeHtml(
             playlist.name
@@ -747,6 +1012,7 @@ function renderCurrentPlaylist() {
         <p>
           This playlist is empty.
         </p>
+
       </div>
     `;
 
@@ -754,7 +1020,9 @@ function renderCurrentPlaylist() {
   }
 
   container.innerHTML = `
+
     <div class="playlist-header">
+
       <h2>
         ${escapeHtml(
           playlist.name
@@ -762,58 +1030,65 @@ function renderCurrentPlaylist() {
       </h2>
 
       <span>
-        ${playlist.tracks.length} tracks
+        ${
+          playlist.tracks.length
+        }
+        tracks
       </span>
+
     </div>
 
     <div class="playlist-tracks">
+
       ${playlist.tracks
-        .map((track, index) => {
-          return `
-            <div
-              class="track-card local-track"
-              data-track-index="${index}"
-            >
+        .map(
+          (track, index) => {
 
-              <img
-                class="track-cover"
-                src="${escapeHtml(
-                  track.artwork ||
-                  "https://via.placeholder.com/500?text=HE3AM"
-                )}"
-                alt="${escapeHtml(
-                  track.title
-                )}"
-                loading="lazy"
-              >
+            return `
+              <div class="track-card">
 
-              <div class="track-info">
-
-                <div class="track-title">
-                  ${escapeHtml(
+                <img
+                  class="track-cover"
+                  src="${escapeHtml(
+                    track.artwork ||
+                    "https://via.placeholder.com/500?text=HE3AM"
+                  )}"
+                  alt="${escapeHtml(
                     track.title
-                  )}
+                  )}"
+                  loading="lazy"
+                >
+
+                <div class="track-info">
+
+                  <div class="track-title">
+                    ${escapeHtml(
+                      track.title
+                    )}
+                  </div>
+
+                  <div class="track-artist">
+                    ${escapeHtml(
+                      track.artist
+                    )}
+                  </div>
+
                 </div>
 
-                <div class="track-artist">
-                  ${escapeHtml(
-                    track.artist
-                  )}
-                </div>
+                <button
+                  class="play-local-btn"
+                  data-index="${index}"
+                  type="button"
+                >
+                  ▶
+                </button>
 
               </div>
-
-              <button
-                class="play-local-btn"
-                data-index="${index}"
-              >
-                ▶
-              </button>
-
-            </div>
-          `;
-        })
+            `;
+          }
+        )
         .join("")}
+
     </div>
   `;
 
@@ -821,26 +1096,33 @@ function renderCurrentPlaylist() {
     .querySelectorAll(
       ".play-local-btn"
     )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          const index =
-            Number(
-              button.dataset.index
-            );
+    .forEach(
+      (button) => {
 
-          playLocalTrack(
-            playlist.tracks[index]
-          );
-        }
-      );
-    });
+        button.addEventListener(
+          "click",
+          () => {
+
+            const index =
+              Number(
+                button.dataset.index
+              );
+
+            playLocalTrack(
+              playlist.tracks[
+                index
+              ]
+            );
+          }
+        );
+      }
+    );
 }
 
-// ===============================
+
+// ======================================================
 // STATS
-// ===============================
+// ======================================================
 
 function updateStats() {
   const playlistCount =
@@ -855,10 +1137,14 @@ function updateStats() {
   }
 
   if (trackCount) {
+
     const total =
       state.playlists.reduce(
-        (sum, playlist) =>
-          sum +
+        (
+          total,
+          playlist
+        ) =>
+          total +
           playlist.tracks.length,
         0
       );
@@ -868,90 +1154,130 @@ function updateStats() {
   }
 }
 
-// ===============================
-// RENDER EVERYTHING
-// ===============================
 
-function renderAll() {
-  renderPlaylists();
-  renderCurrentPlaylist();
-  updateStats();
-  updatePlayer();
-}
-
-// ===============================
-// SEARCH
-// ===============================
+// ======================================================
+// SEARCH SETUP
+// ======================================================
 
 function setupSearch() {
-  const searchInput =
+  const input =
     $("#searchInput");
 
-  if (!searchInput) return;
+  const button =
+    $("#searchButton");
 
-  searchInput.addEventListener(
+  if (!input) return;
+
+  async function performSearch() {
+
+    clearTimeout(
+      searchTimer
+    );
+
+    const query =
+      input.value.trim();
+
+    if (!query) {
+
+      const section =
+        $("#onlineSection");
+
+      if (section) {
+        section.classList.add(
+          "hidden"
+        );
+      }
+
+      return;
+    }
+
+    await searchAudius(
+      query
+    );
+  }
+
+
+  input.addEventListener(
     "input",
     () => {
-      clearTimeout(searchTimer);
+
+      clearTimeout(
+        searchTimer
+      );
 
       const query =
-        searchInput.value.trim();
+        input.value.trim();
 
       if (!query) {
-        const section =
-          $("#onlineSection");
 
-        if (section) {
-          section.classList.add(
+        $("#onlineSection")
+          ?.classList.add(
             "hidden"
           );
-        }
 
         return;
       }
 
       searchTimer =
-        setTimeout(() => {
-          searchAudius(query);
-        }, 500);
+        setTimeout(
+          () => {
+            searchAudius(
+              query
+            );
+          },
+          500
+        );
     }
   );
 
-  searchInput.addEventListener(
+
+  input.addEventListener(
     "keydown",
     (event) => {
+
       if (
-        event.key === "Enter"
+        event.key ===
+        "Enter"
       ) {
         event.preventDefault();
 
-        clearTimeout(
-          searchTimer
-        );
-
-        searchAudius(
-          searchInput.value
-        );
+        performSearch();
       }
     }
   );
+
+
+  button?.addEventListener(
+    "click",
+    performSearch
+  );
 }
 
-// ===============================
+
+// ======================================================
 // THEME
-// ===============================
+// ======================================================
+
+function applyTheme() {
+
+  document.body.dataset.theme =
+    state.theme;
+
+  document.documentElement.dataset.theme =
+    state.theme;
+}
+
 
 function setupTheme() {
   const button =
     $("#themeToggle");
 
-  if (!button) return;
-
   applyTheme();
 
-  button.addEventListener(
+  button?.addEventListener(
     "click",
     () => {
+
       state.theme =
         state.theme === "dark"
           ? "light"
@@ -963,17 +1289,10 @@ function setupTheme() {
   );
 }
 
-function applyTheme() {
-  document.documentElement.dataset.theme =
-    state.theme;
 
-  document.body.dataset.theme =
-    state.theme;
-}
-
-// ===============================
+// ======================================================
 // PLAYLIST DIALOG
-// ===============================
+// ======================================================
 
 function setupPlaylistDialog() {
   const openButton =
@@ -985,7 +1304,7 @@ function setupPlaylistDialog() {
   const form =
     $("#playlistForm");
 
-  const cancelButton =
+  const cancel =
     $("#cancelPlaylistBtn");
 
   if (
@@ -999,6 +1318,7 @@ function setupPlaylistDialog() {
   openButton.addEventListener(
     "click",
     () => {
+
       if (
         typeof dialog.showModal ===
         "function"
@@ -1012,9 +1332,11 @@ function setupPlaylistDialog() {
     }
   );
 
-  cancelButton?.addEventListener(
+
+  cancel?.addEventListener(
     "click",
     () => {
+
       if (
         typeof dialog.close ===
         "function"
@@ -1028,9 +1350,11 @@ function setupPlaylistDialog() {
     }
   );
 
+
   form.addEventListener(
     "submit",
     (event) => {
+
       event.preventDefault();
 
       const input =
@@ -1049,29 +1373,29 @@ function setupPlaylistDialog() {
         "function"
       ) {
         dialog.close();
-      } else {
-        dialog.classList.add(
-          "hidden"
-        );
       }
     }
   );
 }
 
-// ===============================
-// PLAYER EVENTS
-// ===============================
+
+// ======================================================
+// PLAYER SETUP
+// ======================================================
 
 function setupPlayer() {
+
   const playPause =
     $("#playPauseBtn");
 
   const progress =
     $("#progressBar");
 
+
   playPause?.addEventListener(
     "click",
     () => {
+
       if (!audio.src) return;
 
       if (audio.paused) {
@@ -1084,63 +1408,81 @@ function setupPlayer() {
     }
   );
 
+
   progress?.addEventListener(
     "input",
     () => {
-      if (!audio.duration) return;
+
+      if (
+        !Number.isFinite(
+          audio.duration
+        )
+      ) {
+        return;
+      }
 
       audio.currentTime =
-        (Number(progress.value) /
-          100) *
+        (
+          Number(
+            progress.value
+          ) / 100
+        ) *
         audio.duration;
     }
   );
+
 
   audio.addEventListener(
     "timeupdate",
     updateProgress
   );
 
+
   audio.addEventListener(
     "loadedmetadata",
     updateProgress
   );
+
 
   audio.addEventListener(
     "play",
     updatePlayButton
   );
 
+
   audio.addEventListener(
     "pause",
     updatePlayButton
   );
 
+
   audio.addEventListener(
     "ended",
-    () => {
-      updatePlayButton();
-    }
+    updatePlayButton
   );
 }
 
-// ===============================
-// BACKUP / IMPORT
-// ===============================
+
+// ======================================================
+// BACKUP
+// ======================================================
 
 function setupBackup() {
+
   const exportButton =
     $("#exportBtn");
 
   const importButton =
     $("#importBtn");
 
-  const importInput =
+  const importFile =
     $("#importFile");
+
 
   exportButton?.addEventListener(
     "click",
     () => {
+
       const data =
         JSON.stringify(
           state,
@@ -1168,85 +1510,117 @@ function setupBackup() {
         );
 
       link.href = url;
+
       link.download =
         "he3am-music-backup.json";
 
+      document.body.appendChild(
+        link
+      );
+
       link.click();
 
-      URL.revokeObjectURL(url);
+      link.remove();
+
+      URL.revokeObjectURL(
+        url
+      );
     }
   );
+
 
   importButton?.addEventListener(
     "click",
     () => {
-      importInput?.click();
+      importFile?.click();
     }
   );
 
-  importInput?.addEventListener(
+
+  importFile?.addEventListener(
     "change",
     () => {
+
       const file =
-        importInput.files?.[0];
+        importFile.files?.[0];
 
       if (!file) return;
 
       const reader =
         new FileReader();
 
-      reader.onload = () => {
-        try {
-          const imported =
-            JSON.parse(
-              reader.result
+      reader.onload =
+        () => {
+
+          try {
+
+            const imported =
+              JSON.parse(
+                reader.result
+              );
+
+            if (
+              !imported ||
+              !Array.isArray(
+                imported.playlists
+              )
+            ) {
+              throw new Error(
+                "Invalid backup"
+              );
+            }
+
+            state = {
+              ...state,
+              ...imported
+            };
+
+            saveState();
+            renderAll();
+
+            alert(
+              "Backup imported successfully."
             );
 
-          if (
-            !imported ||
-            !Array.isArray(
-              imported.playlists
-            )
-          ) {
-            throw new Error(
-              "Invalid backup file"
+          } catch (error) {
+
+            console.error(
+              "Import error:",
+              error
+            );
+
+            alert(
+              "Could not import this backup."
             );
           }
+        };
 
-          state = {
-            ...state,
-            ...imported
-          };
-
-          saveState();
-          renderAll();
-
-          alert(
-            "Backup imported successfully."
-          );
-
-        } catch (error) {
-          console.error(
-            "Import error:",
-            error
-          );
-
-          alert(
-            "Could not import this backup."
-          );
-        }
-      };
-
-      reader.readAsText(file);
+      reader.readAsText(
+        file
+      );
     }
   );
 }
 
-// ===============================
-// INITIALIZATION
-// ===============================
+
+// ======================================================
+// RENDER ALL
+// ======================================================
+
+function renderAll() {
+  renderPlaylists();
+  renderCurrentPlaylist();
+  updateStats();
+  updatePlayer();
+}
+
+
+// ======================================================
+// INIT
+// ======================================================
 
 function init() {
+
   loadState();
 
   if (
@@ -1271,6 +1645,7 @@ function init() {
     "HE3AM.3AM.MUSIC initialized successfully."
   );
 }
+
 
 document.addEventListener(
   "DOMContentLoaded",
