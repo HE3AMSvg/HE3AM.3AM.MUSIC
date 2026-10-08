@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse Music Hub</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="brand-icon">♪</span><span>Pulse Music Hub</span></a>
+    <div class="top-actions">
+      <button id="themeBtn" class="icon-btn" title="Toggle theme">☀️</button>
+      <button id="newPlaylistBtn" class="primary">＋ New playlist</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <p class="eyebrow">PLAYLIST MANAGER</p>
+      <h1>Your music.<br><span>Your way.</span></h1>
+      <p class="subtitle">Organize your music locally — simple, private, and fast.</p>
+      <div class="stats">
+        <div><strong id="playlistCount">0</strong><span>Playlists</span></div>
+        <div><strong id="trackCount">0</strong><span>Tracks</span></div>
+        <div><strong id="favoriteCount">0</strong><span>Favorites</span></div>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <label class="search">
+        <span>⌕</span><input id="search" placeholder="Search playlists or tracks…">
+      </label>
+      <div class="toolbar-actions">
+        <button id="importBtn" class="secondary">Import</button>
+        <button id="backupBtn" class="secondary">Backup</button>
+        <input id="fileInput" type="file" accept=".json" hidden>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">YOUR LIBRARY</p>
+          <h2>Playlists</h2>
+        </div>
+        <button id="addTrackBtn" class="secondary">＋ Add track</button>
+      </div>
+      <div id="playlistGrid" class="grid"></div>
+      <div id="empty" class="empty">
+        <div class="empty-icon">♫</div>
+        <h3>No playlists yet</h3>
+        <p>Create your first playlist to get started.</p>
+        <button class="primary" onclick="openPlaylistModal()">Create playlist</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="player" id="player">
+    <div class="now-playing">
+      <div class="cover" id="playerCover">♪</div>
+      <div><b id="playerTitle">Nothing playing</b><span id="playerArtist">Choose a track</span></div>
+    </div>
+    <div class="controls">
+      <button id="prevBtn">↶</button><button id="playBtn" class="play">▶</button><button id="nextBtn">↷</button>
+    </div>
+    <div class="progress"><span id="time">0:00</span><input id="progress" type="range" min="0" max="100" value="0"><span id="duration">0:00</span></div>
+  </footer>
+
+  <dialog id="playlistModal">
+    <form method="dialog" id="playlistForm" class="modal">
+      <button class="close" value="cancel">×</button>
+      <p class="eyebrow">NEW PLAYLIST</p>
+      <h2>Create a playlist</h2>
+      <input id="playlistName" required maxlength="40" placeholder="Playlist name">
+      <input id="playlistDescription" maxlength="80" placeholder="Description (optional)">
+      <button class="primary" value="default">Create playlist</button>
+    </form>
+  </dialog>
+
+  <dialog id="trackModal">
+    <form method="dialog" id="trackForm" class="modal">
+      <button class="close" value="cancel">×</button>
+      <p class="eyebrow">ADD TRACK</p>
+      <h2>Add a track</h2>
+      <select id="trackPlaylist"></select>
+      <input id="trackTitle" required maxlength="60" placeholder="Track title">
+      <input id="trackArtist" maxlength="60" placeholder="Artist">
+      <input id="trackUrl" type="url" placeholder="Audio URL (optional)">
+      <button class="primary" value="default">Add track</button>
+    </form>
+  </dialog>
+
+  <template id="playlistTemplate">
+    <article class="card">
+      <div class="card-art">♫</div>
+      <div class="card-body">
+        <div class="card-top"><div><h3></h3><p></p></div><button class="more">•••</button></div>
+        <div class="tracks"></div>
+        <div class="card-footer"><span class="track-count"></span><button class="open">Open</button></div>
+      </div>
+    </article>
+  </template>
+  <script src="app.js"></script>
+</body>
+</html>
