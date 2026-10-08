@@ -4,7 +4,7 @@ const $ = s => document.querySelector(s);
    AUDIUS
 ========================= */
 
-const AUDIUS_API_KEY = "YOUR_AUDIUS_API_KEY";
+const AUDIUS_API_KEY = "0x0ae28e18c315a491764d68a0f18ea5788c68559b";
 
 let audiusSdk = null;
 
