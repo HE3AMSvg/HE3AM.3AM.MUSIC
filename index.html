@@ -5,6 +5,124 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pulse Music Hub</title>
   <link rel="stylesheet" href="style.css">
+
+  <style>
+    .online-section {
+      margin-top: 30px;
+      padding: 22px;
+      border: 1px solid rgba(128,128,128,.2);
+      border-radius: 18px;
+      background: rgba(128,128,128,.06);
+    }
+
+    .online-section.hidden {
+      display: none;
+    }
+
+    .online-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .online-results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .online-track {
+      display: grid;
+      grid-template-columns: 55px 1fr auto;
+      align-items: center;
+      gap: 14px;
+      padding: 9px;
+      border-radius: 13px;
+      background: rgba(128,128,128,.08);
+    }
+
+    .online-cover {
+      width: 55px;
+      height: 55px;
+      border-radius: 10px;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      background: rgba(128,128,128,.15);
+      font-size: 22px;
+    }
+
+    .online-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .online-info {
+      min-width: 0;
+    }
+
+    .online-info b,
+    .online-info span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .online-info span {
+      opacity: .6;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .online-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .online-actions button {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .online-play {
+      background: #9cff57;
+      color: #111;
+    }
+
+    .online-add {
+      background: rgba(128,128,128,.18);
+    }
+
+    .online-status {
+      opacity: .6;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .online-close {
+      cursor: pointer;
+      border: 0;
+      background: transparent;
+      font-size: 18px;
+    }
+
+    @media(max-width:600px) {
+      .online-track {
+        grid-template-columns: 48px 1fr auto;
+      }
+
+      .online-cover {
+        width: 48px;
+        height: 48px;
+      }
+    }
+  </style>
 </head>
 
 <body>
@@ -16,8 +134,10 @@
   </a>
 
   <div class="top-actions">
-    <button id="themeBtn" class="icon-btn" title="Toggle theme">☀️</button>
-    <button id="newPlaylistBtn" class="primary">＋ New playlist</button>
+    <button id="themeBtn" class="icon-btn">☀️</button>
+    <button id="newPlaylistBtn" class="primary">
+      ＋ New playlist
+    </button>
   </div>
 </header>
 
@@ -32,7 +152,7 @@
     </h1>
 
     <p class="subtitle">
-      Search your library or discover music online.
+      Search and play music online.
     </p>
 
     <div class="stats">
@@ -57,23 +177,34 @@
 
     <label class="search">
       <span>⌕</span>
+
       <input
         id="search"
         autocomplete="off"
-        placeholder="Search music online..."
+        placeholder="Search a song or artist..."
       >
     </label>
 
     <div class="toolbar-actions">
-      <button id="onlineSearchBtn" class="primary">
-        Search online
+
+      <button
+        id="onlineSearchBtn"
+        class="primary"
+      >
+        Search
       </button>
 
-      <button id="importBtn" class="secondary">
+      <button
+        id="importBtn"
+        class="secondary"
+      >
         Import
       </button>
 
-      <button id="backupBtn" class="secondary">
+      <button
+        id="backupBtn"
+        class="secondary"
+      >
         Backup
       </button>
 
@@ -83,28 +214,45 @@
         accept=".json"
         hidden
       >
+
     </div>
 
   </section>
 
-  <!-- ONLINE RESULTS -->
+  <!-- ONLINE SEARCH RESULTS -->
 
-  <section id="onlineSection" class="online-section hidden">
+  <section
+    id="onlineSection"
+    class="online-section hidden"
+  >
 
-    <div class="section-head">
+    <div class="online-title">
+
       <div>
-        <p class="eyebrow">AUDIUS</p>
-        <h2>Online results</h2>
+        <p class="eyebrow">ONLINE MUSIC</p>
+        <h2>Search results</h2>
       </div>
 
-      <button id="closeOnlineBtn" class="secondary">
-        Close
+      <button
+        id="closeOnlineBtn"
+        class="online-close"
+      >
+        ×
       </button>
+
     </div>
 
-    <div id="onlineStatus" class="online-status"></div>
+    <div
+      id="onlineStatus"
+      class="online-status"
+    >
+      Search for a song.
+    </div>
 
-    <div id="onlineResults" class="online-results"></div>
+    <div
+      id="onlineResults"
+      class="online-results"
+    ></div>
 
   </section>
 
@@ -119,15 +267,24 @@
         <h2>Playlists</h2>
       </div>
 
-      <button id="addTrackBtn" class="secondary">
+      <button
+        id="addTrackBtn"
+        class="secondary"
+      >
         ＋ Add track
       </button>
 
     </div>
 
-    <div id="playlistGrid" class="grid"></div>
+    <div
+      id="playlistGrid"
+      class="grid"
+    ></div>
 
-    <div id="empty" class="empty">
+    <div
+      id="empty"
+      class="empty"
+    >
 
       <div class="empty-icon">♫</div>
 
@@ -152,11 +309,17 @@
 
 <!-- PLAYER -->
 
-<footer class="player" id="player">
+<footer
+  class="player"
+  id="player"
+>
 
   <div class="now-playing">
 
-    <div class="cover" id="playerCover">
+    <div
+      class="cover"
+      id="playerCover"
+    >
       ♪
     </div>
 
@@ -174,9 +337,7 @@
 
   <div class="controls">
 
-    <button id="prevBtn">
-      ↶
-    </button>
+    <button id="prevBtn">↶</button>
 
     <button
       id="playBtn"
@@ -185,17 +346,13 @@
       ▶
     </button>
 
-    <button id="nextBtn">
-      ↷
-    </button>
+    <button id="nextBtn">↷</button>
 
   </div>
 
   <div class="progress">
 
-    <span id="time">
-      0:00
-    </span>
+    <span id="time">0:00</span>
 
     <input
       id="progress"
@@ -205,9 +362,7 @@
       value="0"
     >
 
-    <span id="duration">
-      0:00
-    </span>
+    <span id="duration">0:00</span>
 
   </div>
 
@@ -234,9 +389,7 @@
       NEW PLAYLIST
     </p>
 
-    <h2>
-      Create a playlist
-    </h2>
+    <h2>Create a playlist</h2>
 
     <input
       id="playlistName"
@@ -248,7 +401,7 @@
     <input
       id="playlistDescription"
       maxlength="80"
-      placeholder="Description (optional)"
+      placeholder="Description"
     >
 
     <button
@@ -283,9 +436,7 @@
       ADD TRACK
     </p>
 
-    <h2>
-      Add a track
-    </h2>
+    <h2>Add a track</h2>
 
     <select id="trackPlaylist"></select>
 
@@ -305,7 +456,7 @@
     <input
       id="trackUrl"
       type="url"
-      placeholder="Audio URL (optional)"
+      placeholder="Audio URL"
     >
 
     <button
