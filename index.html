@@ -1,56 +1,251 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pulse Music Hub</title>
-  <link rel="stylesheet" href="style.css">
+
+  <title>Pulse Music</title>
 
   <style>
-    .online-section {
-      margin-top: 30px;
-      padding: 22px;
-      border: 1px solid rgba(128,128,128,.2);
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7f8;
+      color: #111;
+      padding-bottom: 110px;
+    }
+
+    body.dark {
+      background: #111;
+      color: #fff;
+    }
+
+    header {
+      padding: 25px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .logo {
+      font-size: 25px;
+      font-weight: 800;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+    }
+
+    #search {
+      width: min(600px, 90vw);
+      padding: 15px 18px;
+      border-radius: 14px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+      outline: none;
+    }
+
+    body.dark #search {
+      background: #1d1d1d;
+      color: white;
+      border-color: #333;
+    }
+
+    .search-area {
+      display: flex;
+      justify-content: center;
+      padding: 10px 20px 30px;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+      padding: 10px 20px 30px;
+    }
+
+    .stat {
+      background: white;
+      border-radius: 14px;
+      padding: 15px 25px;
+      min-width: 130px;
+      text-align: center;
+      box-shadow: 0 5px 20px rgba(0,0,0,.06);
+    }
+
+    body.dark .stat {
+      background: #1c1c1c;
+    }
+
+    .stat b {
+      display: block;
+      font-size: 22px;
+    }
+
+    .stat span {
+      opacity: .65;
+      font-size: 13px;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+    }
+
+    .primary {
+      background: #111;
+      color: white;
+    }
+
+    body.dark .primary {
+      background: white;
+      color: black;
+    }
+
+    .playlist-grid {
+      width: min(1100px, 94vw);
+      margin: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 18px;
+    }
+
+    .playlist-card {
+      background: white;
       border-radius: 18px;
-      background: rgba(128,128,128,.06);
+      padding: 20px;
+      box-shadow: 0 5px 25px rgba(0,0,0,.06);
     }
 
-    .online-section.hidden {
-      display: none;
+    body.dark .playlist-card {
+      background: #1c1c1c;
     }
 
-    .online-title {
+    .playlist-card h3 {
+      margin: 0 0 6px;
+    }
+
+    .playlist-card p {
+      opacity: .65;
+    }
+
+    .tracks {
+      margin-top: 15px;
+    }
+
+    .track {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 15px;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
     }
 
-    .online-results {
+    body.dark .track {
+      border-color: #333;
+    }
+
+    .track small {
+      opacity: .6;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 15px;
+    }
+
+    .empty {
+      text-align: center;
+      opacity: .55;
+      padding: 50px 20px;
+    }
+
+    /* ONLINE AUDIO RESULTS */
+
+    #onlineSection {
+      width: min(900px, 94vw);
+      margin: 10px auto 35px;
+    }
+
+    #onlineSection.hidden {
+      display: none;
+    }
+
+    .online-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 10px;
+    }
+
+    .online-header h2 {
+      margin: 0;
+    }
+
+    #onlineStatus {
+      opacity: .6;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    #onlineResults {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     .online-track {
-      display: grid;
-      grid-template-columns: 55px 1fr auto;
+      display: flex;
       align-items: center;
       gap: 14px;
-      padding: 9px;
-      border-radius: 13px;
-      background: rgba(128,128,128,.08);
+      padding: 12px;
+      border-radius: 15px;
+      background: white;
+      box-shadow: 0 4px 18px rgba(0,0,0,.05);
+    }
+
+    body.dark .online-track {
+      background: #1c1c1c;
     }
 
     .online-cover {
-      width: 55px;
-      height: 55px;
+      width: 58px;
+      height: 58px;
+      min-width: 58px;
       border-radius: 10px;
       overflow: hidden;
-      display: grid;
-      place-items: center;
-      background: rgba(128,128,128,.15);
-      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eee;
+      font-size: 25px;
+    }
+
+    body.dark .online-cover {
+      background: #292929;
     }
 
     .online-cover img {
@@ -60,66 +255,173 @@
     }
 
     .online-info {
+      flex: 1;
       min-width: 0;
     }
 
-    .online-info b,
-    .online-info span {
+    .online-info b {
       display: block;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     .online-info span {
+      display: block;
+      opacity: .6;
+      margin-top: 5px;
+      font-size: 14px;
+    }
+
+    .online-actions {
+      display: flex;
+      gap: 7px;
+    }
+
+    .online-play {
+      background: #111;
+      color: white;
+    }
+
+    body.dark .online-play {
+      background: white;
+      color: black;
+    }
+
+    /* PLAYER */
+
+    #player {
+      position: fixed;
+      left: 15px;
+      right: 15px;
+      bottom: 15px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 8px 35px rgba(0,0,0,.18);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    body.dark #player {
+      background: #1c1c1c;
+    }
+
+    #playerCover {
+      width: 55px;
+      height: 55px;
+      border-radius: 10px;
+      background: #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    body.dark #playerCover {
+      background: #292929;
+    }
+
+    .player-info {
+      width: 180px;
+      min-width: 0;
+    }
+
+    #playerTitle,
+    #playerArtist {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #playerTitle {
+      font-weight: bold;
+    }
+
+    #playerArtist {
       opacity: .6;
       font-size: 13px;
       margin-top: 4px;
     }
 
-    .online-actions {
+    .player-controls {
       display: flex;
-      gap: 6px;
+      gap: 7px;
     }
 
-    .online-actions button {
-      width: 38px;
-      height: 38px;
-      border: 0;
-      border-radius: 50%;
-      cursor: pointer;
+    .player-progress {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    .online-play {
-      background: #9cff57;
-      color: #111;
+    #progress {
+      width: 100%;
     }
 
-    .online-add {
-      background: rgba(128,128,128,.18);
-    }
-
-    .online-status {
+    .time {
+      font-size: 12px;
       opacity: .6;
-      font-size: 13px;
-      margin-bottom: 12px;
+      white-space: nowrap;
     }
 
-    .online-close {
-      cursor: pointer;
+    /* DIALOG */
+
+    dialog {
       border: 0;
-      background: transparent;
-      font-size: 18px;
+      border-radius: 18px;
+      padding: 25px;
+      width: min(450px, 90vw);
     }
 
-    @media(max-width:600px) {
-      .online-track {
-        grid-template-columns: 48px 1fr auto;
+    dialog::backdrop {
+      background: rgba(0,0,0,.55);
+    }
+
+    dialog form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    dialog input,
+    dialog textarea,
+    dialog select {
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 15px;
+    }
+
+    .dialog-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 5px;
+    }
+
+    @media (max-width: 700px) {
+
+      #player {
+        flex-wrap: wrap;
       }
 
-      .online-cover {
-        width: 48px;
-        height: 48px;
+      .player-info {
+        flex: 1;
+        width: auto;
+      }
+
+      .player-progress {
+        width: 100%;
+        flex-basis: 100%;
+      }
+
+      .online-track {
+        padding: 9px;
       }
     }
   </style>
@@ -127,393 +429,349 @@
 
 <body>
 
-<header class="topbar">
-  <a class="brand" href="#">
-    <span class="brand-icon">♪</span>
-    <span>Pulse Music Hub</span>
-  </a>
+  <!-- HEADER -->
 
-  <div class="top-actions">
-    <button id="themeBtn" class="icon-btn">☀️</button>
-    <button id="newPlaylistBtn" class="primary">
-      ＋ New playlist
-    </button>
+  <header>
+
+    <div class="logo">
+      🎵 Pulse Music
+    </div>
+
+    <div class="header-actions">
+
+      <button id="themeBtn">
+        ☀️
+      </button>
+
+    </div>
+
+  </header>
+
+
+  <!-- SEARCH -->
+
+  <div class="search-area">
+
+    <input
+      id="search"
+      type="search"
+      placeholder="Search songs, artists or playlists..."
+      autocomplete="off"
+    >
+
   </div>
-</header>
 
-<main class="container">
 
-  <section class="hero">
-    <p class="eyebrow">MUSIC HUB</p>
+  <!-- STATS -->
 
-    <h1>
-      Your music.<br>
-      <span>Your way.</span>
-    </h1>
+  <div class="stats">
 
-    <p class="subtitle">
-      Search and play music online.
-    </p>
-
-    <div class="stats">
-      <div>
-        <strong id="playlistCount">0</strong>
-        <span>Playlists</span>
-      </div>
-
-      <div>
-        <strong id="trackCount">0</strong>
-        <span>Tracks</span>
-      </div>
-
-      <div>
-        <strong id="favoriteCount">0</strong>
-        <span>Favorites</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="toolbar">
-
-    <label class="search">
-      <span>⌕</span>
-
-      <input
-        id="search"
-        autocomplete="off"
-        placeholder="Search a song or artist..."
-      >
-    </label>
-
-    <div class="toolbar-actions">
-
-      <button
-        id="onlineSearchBtn"
-        class="primary"
-      >
-        Search
-      </button>
-
-      <button
-        id="importBtn"
-        class="secondary"
-      >
-        Import
-      </button>
-
-      <button
-        id="backupBtn"
-        class="secondary"
-      >
-        Backup
-      </button>
-
-      <input
-        id="fileInput"
-        type="file"
-        accept=".json"
-        hidden
-      >
-
+    <div class="stat">
+      <b id="playlistCount">0</b>
+      <span>Playlists</span>
     </div>
 
-  </section>
+    <div class="stat">
+      <b id="trackCount">0</b>
+      <span>Tracks</span>
+    </div>
 
-  <!-- ONLINE SEARCH RESULTS -->
+    <div class="stat">
+      <b id="favoriteCount">0</b>
+      <span>Favorites</span>
+    </div>
+
+  </div>
+
+
+  <!-- ACTIONS -->
+
+  <div class="actions">
+
+    <button
+      id="newPlaylistBtn"
+      class="primary"
+    >
+      + New Playlist
+    </button>
+
+    <button id="addTrackBtn">
+      + Add Track
+    </button>
+
+    <button id="backupBtn">
+      Backup
+    </button>
+
+    <button id="importBtn">
+      Import
+    </button>
+
+    <input
+      id="fileInput"
+      type="file"
+      accept="application/json"
+      hidden
+    >
+
+  </div>
+
+
+  <!-- AUDIUS RESULTS -->
 
   <section
     id="onlineSection"
-    class="online-section hidden"
+    class="hidden"
   >
 
-    <div class="online-title">
+    <div class="online-header">
 
       <div>
-        <p class="eyebrow">ONLINE MUSIC</p>
-        <h2>Search results</h2>
+
+        <h2>Online Music</h2>
+
+        <div id="onlineStatus">
+          Search Audius music
+        </div>
+
       </div>
 
-      <button
-        id="closeOnlineBtn"
-        class="online-close"
-      >
-        ×
-      </button>
+      <div>
+
+        <button id="onlineSearchBtn">
+          Search
+        </button>
+
+        <button id="closeOnlineBtn">
+          ×
+        </button>
+
+      </div>
 
     </div>
 
-    <div
-      id="onlineStatus"
-      class="online-status"
-    >
-      Search for a song.
-    </div>
-
-    <div
-      id="onlineResults"
-      class="online-results"
-    ></div>
+    <div id="onlineResults"></div>
 
   </section>
 
-  <!-- LOCAL LIBRARY -->
 
-  <section class="content">
+  <!-- PLAYLISTS -->
 
-    <div class="section-head">
-
-      <div>
-        <p class="eyebrow">YOUR LIBRARY</p>
-        <h2>Playlists</h2>
-      </div>
-
-      <button
-        id="addTrackBtn"
-        class="secondary"
-      >
-        ＋ Add track
-      </button>
-
-    </div>
+  <main>
 
     <div
       id="playlistGrid"
-      class="grid"
+      class="playlist-grid"
     ></div>
 
     <div
       id="empty"
       class="empty"
     >
+      No playlists yet.
+      <br>
+      Create your first playlist.
+    </div>
 
-      <div class="empty-icon">♫</div>
+  </main>
 
-      <h3>No playlists yet</h3>
 
-      <p>
-        Create your first playlist to get started.
-      </p>
+  <!-- PLAYLIST TEMPLATE -->
 
-      <button
-        class="primary"
-        onclick="openPlaylistModal()"
-      >
-        Create playlist
+  <template id="playlistTemplate">
+
+    <article class="playlist-card">
+
+      <h3></h3>
+
+      <p></p>
+
+      <span class="track-count">
+        0 tracks
+      </span>
+
+      <div class="tracks"></div>
+
+      <div class="card-actions">
+
+        <button class="open">
+          Add Track
+        </button>
+
+        <button class="more">
+          Delete
+        </button>
+
+      </div>
+
+    </article>
+
+  </template>
+
+
+  <!-- PLAYER -->
+
+  <div id="player">
+
+    <div id="playerCover">
+      ♪
+    </div>
+
+    <div class="player-info">
+
+      <div id="playerTitle">
+        Nothing playing
+      </div>
+
+      <div id="playerArtist">
+        Select a song
+      </div>
+
+    </div>
+
+    <div class="player-controls">
+
+      <button id="prevBtn">
+        ⏮
+      </button>
+
+      <button id="playBtn">
+        ▶
+      </button>
+
+      <button id="nextBtn">
+        ⏭
       </button>
 
     </div>
 
-  </section>
+    <div class="player-progress">
 
-</main>
-
-<!-- PLAYER -->
-
-<footer
-  class="player"
-  id="player"
->
-
-  <div class="now-playing">
-
-    <div
-      class="cover"
-      id="playerCover"
-    >
-      ♪
-    </div>
-
-    <div>
-      <b id="playerTitle">
-        Nothing playing
-      </b>
-
-      <span id="playerArtist">
-        Choose a track
+      <span
+        id="time"
+        class="time"
+      >
+        0:00
       </span>
+
+      <input
+        id="progress"
+        type="range"
+        min="0"
+        max="100"
+        value="0"
+      >
+
+      <span
+        id="duration"
+        class="time"
+      >
+        0:00
+      </span>
+
     </div>
 
   </div>
 
-  <div class="controls">
 
-    <button id="prevBtn">↶</button>
+  <!-- NEW PLAYLIST MODAL -->
 
-    <button
-      id="playBtn"
-      class="play"
-    >
-      ▶
-    </button>
+  <dialog id="playlistModal">
 
-    <button id="nextBtn">↷</button>
+    <form id="playlistForm">
 
-  </div>
+      <h2>
+        New Playlist
+      </h2>
 
-  <div class="progress">
+      <input
+        id="playlistName"
+        placeholder="Playlist name"
+        required
+      >
 
-    <span id="time">0:00</span>
+      <textarea
+        id="playlistDescription"
+        placeholder="Description"
+        rows="4"
+      ></textarea>
 
-    <input
-      id="progress"
-      type="range"
-      min="0"
-      max="100"
-      value="0"
-    >
+      <div class="dialog-buttons">
 
-    <span id="duration">0:00</span>
+        <button
+          type="button"
+          onclick="this.closest('dialog').close()"
+        >
+          Cancel
+        </button>
 
-  </div>
-
-</footer>
-
-<!-- PLAYLIST MODAL -->
-
-<dialog id="playlistModal">
-
-  <form
-    method="dialog"
-    id="playlistForm"
-    class="modal"
-  >
-
-    <button
-      class="close"
-      value="cancel"
-    >
-      ×
-    </button>
-
-    <p class="eyebrow">
-      NEW PLAYLIST
-    </p>
-
-    <h2>Create a playlist</h2>
-
-    <input
-      id="playlistName"
-      required
-      maxlength="40"
-      placeholder="Playlist name"
-    >
-
-    <input
-      id="playlistDescription"
-      maxlength="80"
-      placeholder="Description"
-    >
-
-    <button
-      class="primary"
-      value="default"
-    >
-      Create playlist
-    </button>
-
-  </form>
-
-</dialog>
-
-<!-- TRACK MODAL -->
-
-<dialog id="trackModal">
-
-  <form
-    method="dialog"
-    id="trackForm"
-    class="modal"
-  >
-
-    <button
-      class="close"
-      value="cancel"
-    >
-      ×
-    </button>
-
-    <p class="eyebrow">
-      ADD TRACK
-    </p>
-
-    <h2>Add a track</h2>
-
-    <select id="trackPlaylist"></select>
-
-    <input
-      id="trackTitle"
-      required
-      maxlength="60"
-      placeholder="Track title"
-    >
-
-    <input
-      id="trackArtist"
-      maxlength="60"
-      placeholder="Artist"
-    >
-
-    <input
-      id="trackUrl"
-      type="url"
-      placeholder="Audio URL"
-    >
-
-    <button
-      class="primary"
-      value="default"
-    >
-      Add track
-    </button>
-
-  </form>
-
-</dialog>
-
-<!-- PLAYLIST TEMPLATE -->
-
-<template id="playlistTemplate">
-
-  <article class="card">
-
-    <div class="card-art">
-      ♫
-    </div>
-
-    <div class="card-body">
-
-      <div class="card-top">
-
-        <div>
-          <h3></h3>
-          <p></p>
-        </div>
-
-        <button class="more">
-          •••
+        <button
+          class="primary"
+          type="submit"
+        >
+          Create
         </button>
 
       </div>
 
-      <div class="tracks"></div>
+    </form>
 
-      <div class="card-footer">
+  </dialog>
 
-        <span class="track-count"></span>
 
-        <button class="open">
-          Open
+  <!-- ADD TRACK MODAL -->
+
+  <dialog id="trackModal">
+
+    <form id="trackForm">
+
+      <h2>
+        Add Track
+      </h2>
+
+      <select id="trackPlaylist"></select>
+
+      <input
+        id="trackTitle"
+        placeholder="Track title"
+        required
+      >
+
+      <input
+        id="trackArtist"
+        placeholder="Artist"
+      >
+
+      <input
+        id="trackUrl"
+        placeholder="Audio URL"
+        type="url"
+      >
+
+      <div class="dialog-buttons">
+
+        <button
+          type="button"
+          onclick="this.closest('dialog').close()"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="primary"
+          type="submit"
+        >
+          Add
         </button>
 
       </div>
 
-    </div>
+    </form>
 
-  </article>
+  </dialog>
 
-</template>
 
-<script src="app.js"></script>
+  <script src="app.js"></script>
 
 </body>
 </html>
