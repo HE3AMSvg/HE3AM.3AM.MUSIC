@@ -8,320 +8,263 @@
     content="width=device-width, initial-scale=1.0"
   >
 
-  <title>HE3AM Music</title>
+  <title>HE3AM.3AM.MUSIC</title>
 
-  <!-- Main stylesheet -->
-  <link
-    rel="stylesheet"
-    href="style.css"
-  >
-
-  <!-- Audius SDK -->
-  <script src="app.js"></script>
-  </script>
+  <link rel="stylesheet" href="style.css">
 </head>
 
-<body>
+<body data-theme="dark">
 
   <!-- =========================
        HEADER
-  ========================== -->
+       ========================= -->
 
-  <header class="topbar">
+  <header class="header">
+    <div class="container header-inner">
 
-    <div class="brand">
-      <div class="brand-logo">♫</div>
-
-      <div>
-        <h1>HE3AM</h1>
-        <span>Music</span>
+      <div class="logo">
+        <span>HE3AM</span>.3AM.MUSIC
       </div>
-    </div>
-
-    <div class="header-actions">
 
       <button
-        id="themeBtn"
-        class="icon-btn"
-        title="Theme"
+        id="themeToggle"
+        type="button"
+        title="Toggle theme"
       >
-        ☀️
+        ☀
       </button>
-
-      <button
-        id="backupBtn"
-        class="icon-btn"
-        title="Backup"
-      >
-        💾
-      </button>
-
-      <button
-        id="importBtn"
-        class="icon-btn"
-        title="Import"
-      >
-        📂
-      </button>
-
-      <input
-        id="fileInput"
-        type="file"
-        accept=".json,application/json"
-        hidden
-      >
 
     </div>
-
   </header>
 
 
   <!-- =========================
        MAIN
-  ========================== -->
+       ========================= -->
 
-  <main class="container">
+  <main>
 
-    <!-- Search -->
+    <div class="container">
 
-    <section class="search-section">
+      <!-- HERO -->
 
-      <div class="search-box">
+      <section class="hero">
 
-        <span class="search-icon">
-          🔎
-        </span>
-
-        <input
-          id="search"
-          type="search"
-          placeholder="Search songs, artists or playlists..."
-          autocomplete="off"
-        >
-
-        <button
-          id="onlineSearchBtn"
-          type="button"
-        >
-          Search
-        </button>
-
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         STATS
-    ========================== -->
-
-    <section class="stats">
-
-      <div class="stat-card">
-        <span>Playlists</span>
-        <strong id="playlistCount">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>Tracks</span>
-        <strong id="trackCount">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>Favorites</span>
-        <strong id="favoriteCount">0</strong>
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         ACTIONS
-    ========================== -->
-
-    <section class="actions">
-
-      <button
-        id="newPlaylistBtn"
-        class="primary-btn"
-        type="button"
-      >
-        ＋ New Playlist
-      </button>
-
-      <button
-        id="addTrackBtn"
-        class="secondary-btn"
-        type="button"
-      >
-        ＋ Add Track
-      </button>
-
-    </section>
-
-
-    <!-- =========================
-         ONLINE MUSIC
-    ========================== -->
-
-    <section
-      id="onlineSection"
-      class="online-section hidden"
-    >
-
-      <div class="section-header">
-
-        <div>
-          <h2>Online Music</h2>
-
-          <p id="onlineStatus">
-            Search Audius
-          </p>
-        </div>
-
-        <button
-          id="closeOnlineBtn"
-          class="close-btn"
-          type="button"
-          title="Close"
-        >
-          ×
-        </button>
-
-      </div>
-
-
-      <div
-        id="onlineResults"
-        class="online-results"
-      ></div>
-
-    </section>
-
-
-    <!-- =========================
-         PLAYLISTS
-    ========================== -->
-
-    <section class="playlist-section">
-
-      <div class="section-header">
-
-        <div>
-          <h2>Your Playlists</h2>
-          <p>Manage your music collection</p>
-        </div>
-
-      </div>
-
-
-      <div
-        id="playlistGrid"
-        class="playlist-grid"
-      ></div>
-
-
-      <div
-        id="empty"
-        class="empty"
-      >
-
-        <div class="empty-icon">
-          ♫
-        </div>
-
-        <h3>No playlists yet</h3>
+        <h1>
+          HE3AM<span>.MUSIC</span>
+        </h1>
 
         <p>
-          Create your first playlist to start
-          building your music collection.
+          Search, discover and play your favorite music.
         </p>
 
-        <button
-          type="button"
-          class="primary-btn"
-          onclick="openPlaylistModal()"
-        >
-          ＋ Create Playlist
-        </button>
 
-      </div>
+        <!-- SEARCH -->
 
-    </section>
+        <div class="search-box">
+
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search songs or artists..."
+            autocomplete="off"
+          >
+
+          <button
+            id="searchButton"
+            type="button"
+          >
+            🔎
+          </button>
+
+        </div>
+
+
+        <!-- STATS -->
+
+        <div class="stats">
+
+          <div class="stat">
+            <strong id="playlistCount">0</strong>
+            <span>Playlists</span>
+          </div>
+
+          <div class="stat">
+            <strong id="trackCount">0</strong>
+            <span>Tracks</span>
+          </div>
+
+          <div class="stat">
+            <strong>∞</strong>
+            <span>Music</span>
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <!-- =========================
+           ACTIONS
+           ========================= -->
+
+      <section>
+
+        <div class="actions">
+
+          <button
+            id="newPlaylistBtn"
+            class="primary"
+            type="button"
+          >
+            + New Playlist
+          </button>
+
+          <button
+            id="exportBtn"
+            type="button"
+          >
+            Export
+          </button>
+
+          <button
+            id="importBtn"
+            type="button"
+          >
+            Import
+          </button>
+
+          <input
+            id="importFile"
+            type="file"
+            accept=".json,application/json"
+            hidden
+          >
+
+        </div>
+
+      </section>
+
+
+      <!-- =========================
+           ONLINE MUSIC
+           ========================= -->
+
+      <section
+        id="onlineSection"
+        class="hidden"
+      >
+
+        <div class="section-header">
+
+          <div>
+            <h2>Online Music</h2>
+            <p id="onlineStatus">
+              Search results will appear here.
+            </p>
+          </div>
+
+        </div>
+
+        <div id="onlineResults"></div>
+
+      </section>
+
+
+      <!-- =========================
+           PLAYLISTS
+           ========================= -->
+
+      <section>
+
+        <div class="section-header">
+
+          <div>
+            <h2>Your Playlists</h2>
+            <p>
+              Manage your music collection.
+            </p>
+          </div>
+
+        </div>
+
+        <div id="playlistGrid"></div>
+
+      </section>
+
+
+      <!-- =========================
+           CURRENT PLAYLIST
+           ========================= -->
+
+      <section>
+
+        <div id="currentPlaylist"></div>
+
+      </section>
+
+    </div>
 
   </main>
 
 
   <!-- =========================
        PLAYER
-  ========================== -->
+       ========================= -->
 
-  <footer class="player">
+  <div
+    id="player"
+    class="music-player"
+  >
 
-    <div class="player-track">
+    <div class="player-inner">
 
-      <div
+      <img
         id="playerCover"
         class="player-cover"
+        src="https://via.placeholder.com/500?text=HE3AM"
+        alt="Current track"
       >
-        ♪
-      </div>
 
       <div class="player-info">
 
-        <strong id="playerTitle">
+        <div
+          id="playerTitle"
+          class="player-title"
+        >
           Nothing playing
-        </strong>
+        </div>
 
-        <span id="playerArtist">
-          Select a song
-        </span>
+        <div
+          id="playerArtist"
+          class="player-artist"
+        >
+          HE3AM
+        </div>
 
       </div>
 
-    </div>
 
-
-    <div class="player-controls">
-
-      <div class="player-buttons">
+      <div class="player-controls">
 
         <button
-          id="prevBtn"
+          id="playPauseBtn"
           type="button"
-          title="Previous"
-        >
-          ⏮
-        </button>
-
-        <button
-          id="playBtn"
-          type="button"
-          class="play-btn"
-          title="Play"
         >
           ▶
         </button>
 
-        <button
-          id="nextBtn"
-          type="button"
-          title="Next"
-        >
-          ⏭
-        </button>
-
       </div>
 
 
-      <div class="progress-container">
+      <div class="player-progress">
 
-        <span id="time">
+        <span id="currentTime">
           0:00
         </span>
 
         <input
-          id="progress"
+          id="progressBar"
           type="range"
           min="0"
           max="100"
@@ -336,71 +279,42 @@
 
     </div>
 
-  </footer>
+  </div>
 
 
   <!-- =========================
-       PLAYLIST MODAL
-  ========================== -->
+       PLAYLIST DIALOG
+       ========================= -->
 
-  <dialog id="playlistModal">
+  <dialog id="playlistDialog">
 
-    <form
-      id="playlistForm"
-      method="dialog"
-      class="modal"
-    >
+    <h2>
+      Create Playlist
+    </h2>
 
-      <div class="modal-header">
-
-        <h2>Create Playlist</h2>
-
-        <button
-          type="button"
-          class="close-btn"
-          onclick="document.getElementById('playlistModal').close()"
-        >
-          ×
-        </button>
-
-      </div>
-
-
-      <label for="playlistName">
-        Playlist name
-      </label>
+    <form id="playlistForm">
 
       <input
         id="playlistName"
         type="text"
-        placeholder="My Playlist"
+        placeholder="Playlist name..."
+        maxlength="50"
         required
+        autocomplete="off"
       >
 
-
-      <label for="playlistDescription">
-        Description
-      </label>
-
-      <textarea
-        id="playlistDescription"
-        placeholder="A collection of my favorite songs..."
-      ></textarea>
-
-
-      <div class="modal-actions">
+      <div class="dialog-actions">
 
         <button
+          id="cancelPlaylistBtn"
           type="button"
-          class="secondary-btn"
-          onclick="document.getElementById('playlistModal').close()"
         >
           Cancel
         </button>
 
         <button
+          class="primary"
           type="submit"
-          class="primary-btn"
         >
           Create
         </button>
@@ -413,151 +327,8 @@
 
 
   <!-- =========================
-       TRACK MODAL
-  ========================== -->
-
-  <dialog id="trackModal">
-
-    <form
-      id="trackForm"
-      method="dialog"
-      class="modal"
-    >
-
-      <div class="modal-header">
-
-        <h2>Add Track</h2>
-
-        <button
-          type="button"
-          class="close-btn"
-          onclick="document.getElementById('trackModal').close()"
-        >
-          ×
-        </button>
-
-      </div>
-
-
-      <label for="trackPlaylist">
-        Playlist
-      </label>
-
-      <select id="trackPlaylist"></select>
-
-
-      <label for="trackTitle">
-        Song title
-      </label>
-
-      <input
-        id="trackTitle"
-        type="text"
-        placeholder="Song title"
-        required
-      >
-
-
-      <label for="trackArtist">
-        Artist
-      </label>
-
-      <input
-        id="trackArtist"
-        type="text"
-        placeholder="Artist"
-      >
-
-
-      <label for="trackUrl">
-        Audio URL
-      </label>
-
-      <input
-        id="trackUrl"
-        type="url"
-        placeholder="https://..."
-      >
-
-
-      <div class="modal-actions">
-
-        <button
-          type="button"
-          class="secondary-btn"
-          onclick="document.getElementById('trackModal').close()"
-        >
-          Cancel
-        </button>
-
-        <button
-          type="submit"
-          class="primary-btn"
-        >
-          Add Track
-        </button>
-
-      </div>
-
-    </form>
-
-  </dialog>
-
-
-  <!-- =========================
-       PLAYLIST TEMPLATE
-  ========================== -->
-
-  <template id="playlistTemplate">
-
-    <article class="playlist-card">
-
-      <div class="playlist-card-header">
-
-        <div>
-          <h3></h3>
-
-          <p></p>
-        </div>
-
-        <button
-          class="more"
-          type="button"
-          title="Delete playlist"
-        >
-          ⋮
-        </button>
-
-      </div>
-
-
-      <div class="playlist-meta">
-
-        <span class="track-count">
-          0 tracks
-        </span>
-
-      </div>
-
-
-      <div class="tracks"></div>
-
-
-      <button
-        class="open"
-        type="button"
-      >
-        Open Playlist
-      </button>
-
-    </article>
-
-  </template>
-
-
-  <!-- =========================
-       APP JS
-  ========================== -->
+       APP
+       ========================= -->
 
   <script src="app.js"></script>
 
