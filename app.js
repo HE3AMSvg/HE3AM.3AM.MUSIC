@@ -4,10 +4,9 @@ const $ = s => document.querySelector(s);
    AUDIUS
 ========================= */
 
-const AUDIUS_API_KEY =
-  "0x95346463237963a1311f3675753aa73056fd1f87";
+const AUDIUS_API_KEY = "YOUR_AUDIUS_API_KEY";
 
-const API = "https://api.audius.co/v1";
+let audiusSdk = null;
 
 let state;
 
@@ -22,6 +21,7 @@ try {
 
 let current = null;
 let audio = new Audio();
+
 let onlineTracks = [];
 let onlineIndex = -1;
 
@@ -40,6 +40,7 @@ function escapeHtml(s) {
   }[c]));
 }
 
+
 function save() {
   localStorage.setItem(
     "pulseMusic",
@@ -51,10 +52,47 @@ function save() {
 
 
 /* =========================
+   AUDIUS INIT
+========================= */
+
+function initAudius() {
+
+  try {
+
+    if (!window.audiusSdk) {
+      throw new Error(
+        "Audius SDK was not loaded."
+      );
+    }
+
+    audiusSdk = window.audiusSdk({
+      apiKey: AUDIUS_API_KEY
+    });
+
+    console.log(
+      "Audius initialized successfully."
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Audius initialization error:",
+      error
+    );
+
+    return false;
+  }
+}
+
+
+/* =========================
    PLAYLIST RENDER
 ========================= */
 
 function render() {
+
   const grid = $("#playlistGrid");
 
   if (!grid) return;
@@ -76,10 +114,12 @@ function render() {
       )
     );
 
+
   if ($("#playlistCount")) {
     $("#playlistCount").textContent =
       state.playlists.length;
   }
+
 
   if ($("#trackCount")) {
     $("#trackCount").textContent =
@@ -88,6 +128,7 @@ function render() {
         0
       );
   }
+
 
   if ($("#favoriteCount")) {
     $("#favoriteCount").textContent =
@@ -101,12 +142,17 @@ function render() {
       );
   }
 
+
   grid.innerHTML = "";
+
 
   if ($("#empty")) {
     $("#empty").style.display =
-      playlists.length ? "none" : "block";
+      playlists.length
+        ? "none"
+        : "block";
   }
+
 
   playlists.forEach(p => {
 
@@ -115,23 +161,32 @@ function render() {
 
     if (!template) return;
 
+
     const card =
       template.content.cloneNode(true);
+
 
     card.querySelector("h3").textContent =
       p.name;
 
+
     card.querySelector("p").textContent =
-      p.description || "Your playlist";
+      p.description ||
+      "Your playlist";
+
 
     card.querySelector(".track-count")
       .textContent =
       `${p.tracks.length} track${
-        p.tracks.length === 1 ? "" : "s"
+        p.tracks.length === 1
+          ? ""
+          : "s"
       }`;
+
 
     const tracks =
       card.querySelector(".tracks");
+
 
     p.tracks.slice(0, 3).forEach(t => {
 
@@ -140,28 +195,40 @@ function render() {
 
       row.className = "track";
 
+
       row.innerHTML = `
         <span>
-          <b>${escapeHtml(t.title)}</b>
+          <b>
+            ${escapeHtml(t.title)}
+          </b>
+
           <small>
             — ${escapeHtml(
-              t.artist || "Unknown artist"
+              t.artist ||
+              "Unknown artist"
             )}
           </small>
         </span>
 
-        <button>▶</button>
+        <button>
+          ▶
+        </button>
       `;
 
+
       row.querySelector("button")
-        .onclick = () => play(t);
+        .onclick = () =>
+          play(t);
+
 
       tracks.appendChild(row);
     });
 
+
     card.querySelector(".open")
       .onclick = () =>
         openTrackModal(p.id);
+
 
     card.querySelector(".more")
       .onclick = () => {
@@ -180,6 +247,7 @@ function render() {
           save();
         }
       };
+
 
     grid.appendChild(card);
   });
@@ -201,39 +269,51 @@ function openPlaylistModal() {
   $("#playlistModal")?.showModal();
 }
 
-$("#newPlaylistBtn")?.addEventListener(
-  "click",
-  openPlaylistModal
-);
 
-$("#playlistForm")?.addEventListener(
-  "submit",
-  e => {
+$("#newPlaylistBtn")
+  ?.addEventListener(
+    "click",
+    openPlaylistModal
+  );
 
-    e.preventDefault();
 
-    const name =
-      $("#playlistName")
-        .value
-        .trim();
+$("#playlistForm")
+  ?.addEventListener(
+    "submit",
+    e => {
 
-    if (!name) return;
+      e.preventDefault();
 
-    state.playlists.push({
-      id: Date.now(),
-      name,
-      description:
-        $("#playlistDescription")
+
+      const name =
+        $("#playlistName")
           .value
-          .trim(),
-      tracks: []
-    });
+          .trim();
 
-    $("#playlistModal").close();
 
-    save();
-  }
-);
+      if (!name) return;
+
+
+      state.playlists.push({
+
+        id: Date.now(),
+
+        name,
+
+        description:
+          $("#playlistDescription")
+            .value
+            .trim(),
+
+        tracks: []
+      });
+
+
+      $("#playlistModal").close();
+
+      save();
+    }
+  );
 
 
 /* =========================
@@ -253,6 +333,7 @@ function openTrackModal(id) {
     return;
   }
 
+
   $("#trackPlaylist").innerHTML =
     state.playlists
       .map(p => `
@@ -262,61 +343,80 @@ function openTrackModal(id) {
       `)
       .join("");
 
-  $("#trackPlaylist").value = id;
+
+  if (id) {
+    $("#trackPlaylist").value = id;
+  }
+
 
   $("#trackTitle").value = "";
   $("#trackArtist").value = "";
   $("#trackUrl").value = "";
 
+
   $("#trackModal").showModal();
 }
 
-$("#addTrackBtn")?.addEventListener(
-  "click",
-  () =>
-    openTrackModal(
-      state.playlists[0]?.id
-    )
-);
 
-$("#trackForm")?.addEventListener(
-  "submit",
-  e => {
+$("#addTrackBtn")
+  ?.addEventListener(
+    "click",
+    () =>
+      openTrackModal(
+        state.playlists[0]?.id
+      )
+  );
 
-    e.preventDefault();
 
-    const p =
-      state.playlists.find(
-        x =>
-          x.id ==
-          $("#trackPlaylist").value
-      );
+$("#trackForm")
+  ?.addEventListener(
+    "submit",
+    e => {
 
-    if (!p) return;
+      e.preventDefault();
 
-    p.tracks.push({
-      id: Date.now(),
-      title:
-        $("#trackTitle")
-          .value
-          .trim(),
-      artist:
-        $("#trackArtist")
-          .value
-          .trim(),
-      url:
-        $("#trackUrl")
-          .value
-          .trim(),
-      artwork: "",
-      favorite: false
-    });
 
-    $("#trackModal").close();
+      const p =
+        state.playlists.find(
+          x =>
+            x.id ==
+            $("#trackPlaylist").value
+        );
 
-    save();
-  }
-);
+
+      if (!p) return;
+
+
+      p.tracks.push({
+
+        id: Date.now(),
+
+        title:
+          $("#trackTitle")
+            .value
+            .trim(),
+
+        artist:
+          $("#trackArtist")
+            .value
+            .trim(),
+
+        url:
+          $("#trackUrl")
+            .value
+            .trim(),
+
+        artwork: "",
+
+        favorite: false
+      });
+
+
+      $("#trackModal").close();
+
+      save();
+    }
+  );
 
 
 /* =========================
@@ -329,6 +429,7 @@ async function searchAudius(query) {
 
   if (!query) return;
 
+
   const section =
     $("#onlineSection");
 
@@ -338,13 +439,22 @@ async function searchAudius(query) {
   const results =
     $("#onlineResults");
 
-  if (!section || !status || !results)
-    return;
 
-  section.classList.remove("hidden");
+  if (
+    !section ||
+    !status ||
+    !results
+  ) return;
+
+
+  section.classList.remove(
+    "hidden"
+  );
+
 
   status.textContent =
     "Searching Audius...";
+
 
   results.innerHTML = `
     <div style="padding:20px">
@@ -352,43 +462,44 @@ async function searchAudius(query) {
     </div>
   `;
 
+
   try {
 
-    const params =
-      new URLSearchParams({
-        query,
-        limit: "15",
-        offset: "0"
-      });
+    if (!audiusSdk) {
 
-    const response =
-      await fetch(
-        `${API}/tracks/search?${params}`,
-        {
-          method: "GET",
-          headers: {
-            "X-API-Key":
-              AUDIUS_API_KEY
-          }
-        }
-      );
+      const initialized =
+        initAudius();
 
-    if (!response.ok) {
-
-      throw new Error(
-        `Audius HTTP ${response.status}`
-      );
+      if (!initialized) {
+        throw new Error(
+          "Audius SDK could not initialize."
+        );
+      }
     }
 
-    const json =
-      await response.json();
+
+    const response =
+      await audiusSdk.tracks.searchTracks({
+
+        query,
+
+        limit: 15,
+
+        offset: 0,
+
+        sortMethod: "relevant"
+
+      });
+
 
     onlineTracks =
-      Array.isArray(json.data)
-        ? json.data
+      Array.isArray(response?.data)
+        ? response.data
         : [];
 
+
     renderOnline();
+
 
   } catch (error) {
 
@@ -397,14 +508,32 @@ async function searchAudius(query) {
       error
     );
 
+
+    onlineTracks = [];
+
+
     status.textContent =
       "Could not connect to Audius.";
 
+
     results.innerHTML = `
       <div style="padding:20px">
-        Audius is temporarily unavailable.
-        <br>
+        <strong>
+          Audius is temporarily unavailable.
+        </strong>
+
+        <br><br>
+
         Please try again.
+
+        <br><br>
+
+        <small>
+          ${escapeHtml(
+            error?.message ||
+            "Unknown error"
+          )}
+        </small>
       </div>
     `;
   }
@@ -421,9 +550,11 @@ function getArtwork(track) {
     track.artwork?.["1000x1000"] ||
     track.artwork?.["480x480"] ||
     track.artwork?.["150x150"] ||
+    track.artwork?.["600x600"] ||
     ""
   );
 }
+
 
 function getArtist(track) {
 
@@ -434,6 +565,7 @@ function getArtist(track) {
   );
 }
 
+
 function renderOnline() {
 
   const results =
@@ -441,7 +573,9 @@ function renderOnline() {
 
   if (!results) return;
 
+
   results.innerHTML = "";
+
 
   if (!onlineTracks.length) {
 
@@ -451,8 +585,10 @@ function renderOnline() {
     return;
   }
 
+
   $("#onlineStatus").textContent =
     `${onlineTracks.length} songs found`;
+
 
   onlineTracks.forEach(
     (track, index) => {
@@ -460,14 +596,18 @@ function renderOnline() {
       const artist =
         getArtist(track);
 
+
       const cover =
         getArtwork(track);
+
 
       const item =
         document.createElement("div");
 
+
       item.className =
         "online-track";
+
 
       item.innerHTML = `
 
@@ -477,7 +617,9 @@ function renderOnline() {
             cover
               ? `
                 <img
-                  src="${escapeHtml(cover)}"
+                  src="${escapeHtml(
+                    cover
+                  )}"
                   alt=""
                 >
               `
@@ -485,6 +627,7 @@ function renderOnline() {
           }
 
         </div>
+
 
         <div class="online-info">
 
@@ -496,10 +639,13 @@ function renderOnline() {
           </b>
 
           <span>
-            ${escapeHtml(artist)}
+            ${escapeHtml(
+              artist
+            )}
           </span>
 
         </div>
+
 
         <div class="online-actions">
 
@@ -509,6 +655,7 @@ function renderOnline() {
           >
             ▶
           </button>
+
 
           <button
             class="online-add"
@@ -520,18 +667,25 @@ function renderOnline() {
         </div>
       `;
 
+
       item
-        .querySelector(".online-play")
+        .querySelector(
+          ".online-play"
+        )
         .onclick = () =>
           playAudius(
             track,
             index
           );
 
+
       item
-        .querySelector(".online-add")
+        .querySelector(
+          ".online-add"
+        )
         .onclick = () =>
           addAudius(track);
+
 
       results.appendChild(item);
     }
@@ -546,9 +700,11 @@ function renderOnline() {
 function streamUrl(track) {
 
   return (
-    `${API}/tracks/` +
-    `${encodeURIComponent(track.id)}` +
-    `/stream`
+    `https://api.audius.co/v1/tracks/` +
+    `${encodeURIComponent(
+      track.id
+    )}` +
+    `/stream?app_name=HE3AM`
   );
 }
 
@@ -557,9 +713,13 @@ function streamUrl(track) {
    PLAY AUDIUS
 ========================= */
 
-function playAudius(track, index) {
+function playAudius(
+  track,
+  index
+) {
 
   onlineIndex = index;
+
 
   current = {
 
@@ -577,19 +737,24 @@ function playAudius(track, index) {
       getArtwork(track)
   };
 
+
   updatePlayer();
+
 
   audio.src =
     current.url;
 
+
   audio.load();
+
 
   audio.play()
     .then(() => {
 
       if ($("#playBtn")) {
-        $("#playBtn").textContent =
-          "❚❚";
+
+        $("#playBtn")
+          .textContent = "❚❚";
       }
 
     })
@@ -601,8 +766,9 @@ function playAudius(track, index) {
       );
 
       if ($("#playBtn")) {
-        $("#playBtn").textContent =
-          "▶";
+
+        $("#playBtn")
+          .textContent = "▶";
       }
     });
 }
@@ -618,7 +784,9 @@ function play(track) {
 
   onlineIndex = -1;
 
+
   updatePlayer();
+
 
   if (!track.url) {
 
@@ -629,17 +797,21 @@ function play(track) {
     return;
   }
 
+
   audio.src =
     track.url;
 
+
   audio.load();
+
 
   audio.play()
     .then(() => {
 
       if ($("#playBtn")) {
-        $("#playBtn").textContent =
-          "❚❚";
+
+        $("#playBtn")
+          .textContent = "❚❚";
       }
 
     })
@@ -655,21 +827,30 @@ function updatePlayer() {
 
   if (!current) return;
 
+
   if ($("#playerTitle")) {
-    $("#playerTitle").textContent =
+
+    $("#playerTitle")
+      .textContent =
       current.title;
   }
 
+
   if ($("#playerArtist")) {
-    $("#playerArtist").textContent =
+
+    $("#playerArtist")
+      .textContent =
       current.artist ||
       "Unknown artist";
   }
 
+
   const cover =
     $("#playerCover");
 
+
   if (!cover) return;
+
 
   if (current.artwork) {
 
@@ -683,7 +864,7 @@ function updatePlayer() {
           width:100%;
           height:100%;
           object-fit:cover;
-          border-radius:10px
+          border-radius:10px;
         "
       >
     `;
@@ -700,74 +881,88 @@ function updatePlayer() {
    MAIN PLAYER
 ========================= */
 
-$("#playBtn")?.addEventListener(
-  "click",
-  () => {
+$("#playBtn")
+  ?.addEventListener(
+    "click",
+    () => {
 
-    if (!current) return;
+      if (!current) return;
 
-    if (audio.paused) {
 
-      audio.play()
-        .then(() => {
+      if (audio.paused) {
 
-          $("#playBtn").textContent =
-            "❚❚";
+        audio.play()
+          .then(() => {
 
-        })
-        .catch(() => {});
+            $("#playBtn")
+              .textContent =
+              "❚❚";
 
-    } else {
+          })
+          .catch(() => {});
 
-      audio.pause();
+      } else {
 
-      $("#playBtn").textContent =
-        "▶";
+        audio.pause();
+
+        $("#playBtn")
+          .textContent =
+          "▶";
+      }
     }
-  }
-);
+  );
 
 
-/* NEXT */
+/* =========================
+   NEXT
+========================= */
 
-$("#nextBtn")?.addEventListener(
-  "click",
-  () => {
+$("#nextBtn")
+  ?.addEventListener(
+    "click",
+    () => {
 
-    if (
-      onlineIndex >= 0 &&
-      onlineIndex <
-        onlineTracks.length - 1
-    ) {
+      if (
+        onlineIndex >= 0 &&
+        onlineIndex <
+          onlineTracks.length - 1
+      ) {
 
-      playAudius(
-        onlineTracks[
+        playAudius(
+
+          onlineTracks[
+            onlineIndex + 1
+          ],
+
           onlineIndex + 1
-        ],
-        onlineIndex + 1
-      );
+        );
+      }
     }
-  }
-);
+  );
 
 
-/* PREVIOUS */
+/* =========================
+   PREVIOUS
+========================= */
 
-$("#prevBtn")?.addEventListener(
-  "click",
-  () => {
+$("#prevBtn")
+  ?.addEventListener(
+    "click",
+    () => {
 
-    if (onlineIndex > 0) {
+      if (onlineIndex > 0) {
 
-      playAudius(
-        onlineTracks[
+        playAudius(
+
+          onlineTracks[
+            onlineIndex - 1
+          ],
+
           onlineIndex - 1
-        ],
-        onlineIndex - 1
-      );
+        );
+      }
     }
-  }
-);
+  );
 
 
 /* =========================
@@ -778,6 +973,7 @@ audio.ontimeupdate = () => {
 
   const duration =
     audio.duration || 0;
+
 
   if ($("#progress")) {
 
@@ -790,6 +986,7 @@ audio.ontimeupdate = () => {
         : 0;
   }
 
+
   if ($("#time")) {
 
     $("#time").textContent =
@@ -797,6 +994,7 @@ audio.ontimeupdate = () => {
         audio.currentTime
       );
   }
+
 
   if ($("#duration")) {
 
@@ -809,8 +1007,9 @@ audio.ontimeupdate = () => {
 audio.onplay = () => {
 
   if ($("#playBtn")) {
-    $("#playBtn").textContent =
-      "❚❚";
+
+    $("#playBtn")
+      .textContent = "❚❚";
   }
 };
 
@@ -818,8 +1017,9 @@ audio.onplay = () => {
 audio.onpause = () => {
 
   if ($("#playBtn")) {
-    $("#playBtn").textContent =
-      "▶";
+
+    $("#playBtn")
+      .textContent = "▶";
   }
 };
 
@@ -831,9 +1031,11 @@ audio.onerror = error => {
     error
   );
 
+
   if ($("#playBtn")) {
-    $("#playBtn").textContent =
-      "▶";
+
+    $("#playBtn")
+      .textContent = "▶";
   }
 };
 
@@ -847,39 +1049,46 @@ audio.onended = () => {
   ) {
 
     playAudius(
+
       onlineTracks[
         onlineIndex + 1
       ],
+
       onlineIndex + 1
     );
 
   } else {
 
     if ($("#playBtn")) {
-      $("#playBtn").textContent =
-        "▶";
+
+      $("#playBtn")
+        .textContent = "▶";
     }
   }
 };
 
 
-/* PROGRESS */
+/* =========================
+   PROGRESS
+========================= */
 
-$("#progress")?.addEventListener(
-  "input",
-  () => {
+$("#progress")
+  ?.addEventListener(
+    "input",
+    () => {
 
-    if (!audio.duration)
-      return;
+      if (!audio.duration)
+        return;
 
-    audio.currentTime =
-      audio.duration *
-      (
-        $("#progress").value /
-        100
-      );
-  }
-);
+
+      audio.currentTime =
+        audio.duration *
+        (
+          $("#progress").value /
+          100
+        );
+    }
+  );
 
 
 /* =========================
@@ -891,11 +1100,16 @@ function formatTime(seconds) {
   if (!Number.isFinite(seconds))
     return "0:00";
 
+
   return (
-    Math.floor(seconds / 60) +
+    Math.floor(
+      seconds / 60
+    ) +
     ":" +
     String(
-      Math.floor(seconds % 60)
+      Math.floor(
+        seconds % 60
+      )
     ).padStart(2, "0")
   );
 }
@@ -918,14 +1132,18 @@ function addAudius(track) {
     return;
   }
 
+
   const playlist =
     state.playlists[0];
+
 
   const alreadyExists =
     playlist.tracks.some(
       t =>
-        t.audiusId === track.id
+        String(t.audiusId) ===
+        String(track.id)
     );
+
 
   if (alreadyExists) {
 
@@ -935,6 +1153,7 @@ function addAudius(track) {
 
     return;
   }
+
 
   playlist.tracks.push({
 
@@ -960,7 +1179,9 @@ function addAudius(track) {
       false
   });
 
+
   save();
+
 
   alert(
     "Song added to your playlist."
@@ -974,58 +1195,70 @@ function addAudius(track) {
 
 let searchTimer;
 
-$("#search")?.addEventListener(
-  "input",
-  () => {
 
-    render();
+$("#search")
+  ?.addEventListener(
+    "input",
+    () => {
 
-    clearTimeout(
-      searchTimer
-    );
+      render();
 
-    const value =
-      $("#search")
-        .value
-        .trim();
 
-    if (!value) {
-
-      $("#onlineSection")
-        ?.classList
-        .add("hidden");
-
-      return;
-    }
-
-    searchTimer =
-      setTimeout(
-        () =>
-          searchAudius(value),
-        600
+      clearTimeout(
+        searchTimer
       );
-  }
-);
 
 
-$("#search")?.addEventListener(
-  "keydown",
-  e => {
+      const value =
+        $("#search")
+          .value
+          .trim();
 
-    if (e.key !== "Enter")
-      return;
 
-    e.preventDefault();
+      if (!value) {
 
-    clearTimeout(
-      searchTimer
-    );
+        $("#onlineSection")
+          ?.classList
+          .add("hidden");
 
-    searchAudius(
-      $("#search").value
-    );
-  }
-);
+        return;
+      }
+
+
+      searchTimer =
+        setTimeout(
+          () =>
+            searchAudius(
+              value
+            ),
+          600
+        );
+    }
+  );
+
+
+$("#search")
+  ?.addEventListener(
+    "keydown",
+    e => {
+
+      if (e.key !== "Enter")
+        return;
+
+
+      e.preventDefault();
+
+
+      clearTimeout(
+        searchTimer
+      );
+
+
+      searchAudius(
+        $("#search").value
+      );
+    }
+  );
 
 
 $("#onlineSearchBtn")
@@ -1061,10 +1294,12 @@ $("#themeBtn")
         .classList
         .toggle("dark");
 
+
       const dark =
         document.body
           .classList
           .contains("dark");
+
 
       localStorage.setItem(
         "pulseTheme",
@@ -1073,8 +1308,11 @@ $("#themeBtn")
           : "light"
       );
 
+
       $("#themeBtn").textContent =
-        dark ? "🌙" : "☀️";
+        dark
+          ? "🌙"
+          : "☀️";
     }
   );
 
@@ -1089,9 +1327,11 @@ if (
     .classList
     .add("dark");
 
+
   if ($("#themeBtn")) {
-    $("#themeBtn").textContent =
-      "🌙";
+
+    $("#themeBtn")
+      .textContent = "🌙";
   }
 }
 
@@ -1120,16 +1360,25 @@ $("#backupBtn")
           }
         );
 
+
       const a =
-        document.createElement("a");
+        document.createElement(
+          "a"
+        );
+
 
       a.href =
-        URL.createObjectURL(blob);
+        URL.createObjectURL(
+          blob
+        );
+
 
       a.download =
         "pulse-music-backup.json";
 
+
       a.click();
+
 
       URL.revokeObjectURL(
         a.href
@@ -1158,10 +1407,13 @@ $("#fileInput")
       const file =
         e.target.files[0];
 
+
       if (!file) return;
+
 
       const reader =
         new FileReader();
+
 
       reader.onload = () => {
 
@@ -1172,15 +1424,19 @@ $("#fileInput")
               reader.result
             );
 
+
           if (
             !Array.isArray(
               data.playlists
             )
           ) {
+
             throw new Error();
           }
 
+
           state = data;
+
 
           save();
 
@@ -1192,6 +1448,7 @@ $("#fileInput")
         }
       };
 
+
       reader.readAsText(file);
     }
   );
@@ -1202,3 +1459,5 @@ $("#fileInput")
 ========================= */
 
 render();
+
+initAudius();
