@@ -1,1031 +1,580 @@
-const $ = s => document.querySelector(s);
+const $ = (s) => document.querySelector(s);
 
-let state;
+const API = "https://api.audius.co/v1";
 
-try {
-  state = JSON.parse(
-    localStorage.getItem("pulseMusic") ||
-    '{"playlists":[]}'
-  );
-} catch {
-  state = { playlists: [] };
-}
+let state = JSON.parse(
+  localStorage.getItem("pulseMusic") || '{"playlists":[]}'
+);
 
-let current = null;
 let audio = new Audio();
+let current = null;
 let onlineTracks = [];
 let onlineIndex = -1;
 
-const AUDIUS_API = "https://api.audius.co/v1";
-
 function save() {
-  localStorage.setItem(
-    "pulseMusic",
-    JSON.stringify(state)
-  );
-
+  localStorage.setItem("pulseMusic", JSON.stringify(state));
   render();
 }
 
-/* =========================
-   LOCAL LIBRARY
-========================= */
+function escapeHtml(text) {
+  return String(text || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  }[c]));
+}
+
+/* ---------- LIBRARY ---------- */
 
 function render() {
-
-  const q = $("#search").value
-    .toLowerCase()
-    .trim();
-
-  const playlists = state.playlists.filter(p =>
-    p.name.toLowerCase().includes(q) ||
-    (p.description || "").toLowerCase().includes(q) ||
-    p.tracks.some(t =>
-      (t.title + " " + (t.artist || ""))
-        .toLowerCase()
-        .includes(q)
-    )
-  );
-
-  $("#playlistCount").textContent =
-    state.playlists.length;
-
-  $("#trackCount").textContent =
-    state.playlists.reduce(
-      (n, p) => n + p.tracks.length,
-      0
-    );
-
-  $("#favoriteCount").textContent =
-    state.playlists.reduce(
-      (n, p) =>
-        n + p.tracks.filter(t => t.favorite).length,
-      0
-    );
-
   const grid = $("#playlistGrid");
+  if (!grid) return;
 
   grid.innerHTML = "";
 
-  $("#empty").style.display =
-    playlists.length ? "none" : "block";
+  $("#playlistCount").textContent = state.playlists.length;
 
-  playlists.forEach(p => {
+  const total = state.playlists.reduce(
+    (n, p) => n + p.tracks.length,
+    0
+  );
 
-    const card =
-      $("#playlistTemplate")
-        .content
-        .cloneNode(true);
+  $("#trackCount").textContent = total;
 
-    const el = card.querySelector(".card");
+  $("#favoriteCount").textContent =
+    state.playlists.reduce(
+      (n, p) => n + p.tracks.filter(t => t.favorite).length,
+      0
+    );
 
-    card.querySelector("h3").textContent =
-      p.name;
+  state.playlists.forEach(playlist => {
+    const card = $("#playlistTemplate")
+      .content
+      .cloneNode(true);
 
+    card.querySelector("h3").textContent = playlist.name;
     card.querySelector("p").textContent =
-      p.description || "Your playlist";
+      playlist.description || "Your playlist";
 
-    card.querySelector(".track-count")
-      .textContent =
-      `${p.tracks.length} track${
-        p.tracks.length === 1 ? "" : "s"
-      }`;
+    card.querySelector(".track-count").textContent =
+      `${playlist.tracks.length} tracks`;
 
-    const tracks =
-      card.querySelector(".tracks");
+    const tracks = card.querySelector(".tracks");
 
-    p.tracks.slice(0, 3).forEach(t => {
-
-      const row =
-        document.createElement("div");
+    playlist.tracks.slice(0, 3).forEach(track => {
+      const row = document.createElement("div");
 
       row.className = "track";
 
       row.innerHTML = `
         <span>
-          <b>${escapeHtml(t.title)}</b>
-          <small>
-            — ${escapeHtml(t.artist || "Unknown artist")}
-          </small>
+          <b>${escapeHtml(track.title)}</b>
+          <small> — ${escapeHtml(track.artist)}</small>
         </span>
-
-        <button title="Play">
-          ▶
-        </button>
+        <button>▶</button>
       `;
 
-      row.querySelector("button")
-        .onclick = () => play(t);
+      row.querySelector("button").onclick = () => play(track);
 
       tracks.appendChild(row);
-
     });
 
-    card.querySelector(".open")
-      .onclick = () =>
-        openTrackModal(p.id);
+    card.querySelector(".open").onclick = () =>
+      openTrackModal(playlist.id);
 
-    card.querySelector(".more")
-      .onclick = () => {
+    card.querySelector(".more").onclick = () => {
+      if (confirm(`Delete "${playlist.name}"?`)) {
+        state.playlists = state.playlists.filter(
+          p => p.id !== playlist.id
+        );
+        save();
+      }
+    };
 
-        if (
-          confirm(
-            `Delete "${p.name}"?`
-          )
-        ) {
-
-          state.playlists =
-            state.playlists.filter(
-              x => x.id !== p.id
-            );
-
-          save();
-
-        }
-
-      };
-
-    grid.appendChild(el);
-
+    grid.appendChild(card);
   });
 
+  $("#empty").style.display =
+    state.playlists.length ? "none" : "block";
 }
 
-/* =========================
-   HTML SAFETY
-========================= */
-
-function escapeHtml(s) {
-
-  return String(s).replace(
-    /[&<>"']/g,
-    c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[c])
-  );
-
-}
-
-/* =========================
-   PLAYLISTS
-========================= */
+/* ---------- PLAYLIST ---------- */
 
 function openPlaylistModal() {
-
   $("#playlistName").value = "";
   $("#playlistDescription").value = "";
-
   $("#playlistModal").showModal();
-
 }
 
-$("#newPlaylistBtn")
-  .onclick = openPlaylistModal;
+$("#newPlaylistBtn").onclick = openPlaylistModal;
 
 $("#playlistForm").onsubmit = e => {
-
   e.preventDefault();
 
-  const name =
-    $("#playlistName")
-      .value
-      .trim();
-
-  const description =
-    $("#playlistDescription")
-      .value
-      .trim();
+  const name = $("#playlistName").value.trim();
 
   if (!name) return;
 
   state.playlists.push({
-
     id: Date.now(),
-
     name,
-
-    description,
-
+    description: $("#playlistDescription").value.trim(),
     tracks: []
-
   });
 
   $("#playlistModal").close();
-
   save();
-
 };
 
-/* =========================
-   ADD TRACK
-========================= */
+/* ---------- ADD TRACK ---------- */
 
 function openTrackModal(id) {
-
   if (!state.playlists.length) {
-
-    alert(
-      "Create a playlist first."
-    );
-
+    alert("Create a playlist first.");
+    openPlaylistModal();
     return;
-
   }
 
-  const sel =
-    $("#trackPlaylist");
-
-  sel.innerHTML =
-    state.playlists
-      .map(p => `
-        <option
-          value="${p.id}"
-          ${p.id === id ? "selected" : ""}
-        >
-          ${escapeHtml(p.name)}
-        </option>
-      `)
-      .join("");
+  $("#trackPlaylist").innerHTML =
+    state.playlists.map(p => `
+      <option value="${p.id}" ${p.id == id ? "selected" : ""}>
+        ${escapeHtml(p.name)}
+      </option>
+    `).join("");
 
   $("#trackTitle").value = "";
   $("#trackArtist").value = "";
   $("#trackUrl").value = "";
 
   $("#trackModal").showModal();
-
 }
 
-$("#addTrackBtn")
-  .onclick = () =>
-    openTrackModal(
-      state.playlists[0]?.id
-    );
+$("#addTrackBtn").onclick = () =>
+  openTrackModal(state.playlists[0]?.id);
 
 $("#trackForm").onsubmit = e => {
-
   e.preventDefault();
 
-  const playlist =
-    state.playlists.find(
-      x =>
-        x.id ==
-        $("#trackPlaylist").value
-    );
+  const playlist = state.playlists.find(
+    p => p.id == $("#trackPlaylist").value
+  );
 
   if (!playlist) return;
 
   playlist.tracks.push({
-
     id: Date.now(),
-
-    title:
-      $("#trackTitle")
-        .value
-        .trim(),
-
-    artist:
-      $("#trackArtist")
-        .value
-        .trim(),
-
-    url:
-      $("#trackUrl")
-        .value
-        .trim(),
-
+    title: $("#trackTitle").value.trim(),
+    artist: $("#trackArtist").value.trim(),
+    url: $("#trackUrl").value.trim(),
+    artwork: "",
     favorite: false
-
   });
 
   $("#trackModal").close();
-
   save();
-
 };
 
-/* =========================
-   AUDIUS SEARCH
-========================= */
+/* ---------- AUDIUS SEARCH ---------- */
 
 async function searchAudius(query) {
-
   query = query.trim();
 
   if (!query) {
-
-    $("#onlineSection")
-      .classList.add("hidden");
-
+    $("#onlineSection").classList.add("hidden");
     return;
-
   }
 
-  $("#onlineSection")
-    .classList.remove("hidden");
-
-  $("#onlineStatus")
-    .textContent =
-    "Searching Audius...";
-
-  $("#onlineResults")
-    .innerHTML = "";
+  $("#onlineSection").classList.remove("hidden");
+  $("#onlineStatus").textContent = "Searching...";
+  $("#onlineResults").innerHTML = "";
 
   try {
-
     const url =
-      `${AUDIUS_API}/tracks/search?` +
-      new URLSearchParams({
-        query,
-        limit: "15"
-      });
+      `${API}/tracks/search?query=${encodeURIComponent(query)}&limit=15`;
 
-    const response =
-      await fetch(url);
+    const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
-      );
+      throw new Error(`HTTP ${response.status}`);
     }
 
-    const json =
-      await response.json();
+    const result = await response.json();
 
-    onlineTracks =
-      Array.isArray(json.data)
-        ? json.data
-        : [];
+    onlineTracks = result.data || [];
 
-    renderOnlineResults();
+    renderOnline();
 
   } catch (error) {
+    console.error(error);
 
-    console.error(
-      "Audius search error:",
-      error
-    );
+    $("#onlineStatus").textContent =
+      "Audius is unavailable right now.";
 
-    $("#onlineStatus")
-      .textContent =
-      "Could not connect to Audius. Please try again.";
+    $("#onlineResults").innerHTML = `
+      <div class="online-error">
+        <b>Could not connect to Audius.</b>
+        <p>Please try again in a moment.</p>
+        <button class="primary" id="retryAudius">
+          Retry
+        </button>
+      </div>
+    `;
 
-    $("#onlineResults")
-      .innerHTML = "";
-
+    $("#retryAudius").onclick = () =>
+      searchAudius(query);
   }
-
 }
 
-function renderOnlineResults() {
+function renderOnline() {
+  const box = $("#onlineResults");
 
-  const container =
-    $("#onlineResults");
-
-  container.innerHTML = "";
+  box.innerHTML = "";
 
   if (!onlineTracks.length) {
-
-    $("#onlineStatus")
-      .textContent =
+    $("#onlineStatus").textContent =
       "No results found.";
-
     return;
-
   }
 
-  $("#onlineStatus")
-    .textContent =
-    `${onlineTracks.length} results found`;
+  $("#onlineStatus").textContent =
+    `${onlineTracks.length} results`;
 
-  onlineTracks.forEach(
-    (track, index) => {
+  onlineTracks.forEach((track, index) => {
+    const artist =
+      track.user?.name ||
+      track.user?.handle ||
+      "Unknown artist";
 
-      const item =
-        document.createElement("article");
+    const cover =
+      track.artwork?.["480x480"] ||
+      track.artwork?.["150x150"] ||
+      "";
 
-      item.className =
-        "online-track";
+    const item = document.createElement("article");
 
-      const image =
-        track.artwork?.["150x150"] ||
-        track.artwork?.["480x480"] ||
-        track.artwork?.["1000x1000"];
+    item.className = "online-track";
 
-      item.innerHTML = `
+    item.innerHTML = `
+      <div class="online-cover">
+        ${
+          cover
+            ? `<img src="${escapeHtml(cover)}" alt="">`
+            : "♫"
+        }
+      </div>
 
-        <div class="online-cover">
-          ${
-            image
-              ? `<img
-                   src="${escapeHtml(image)}"
-                   alt=""
-                   loading="lazy"
-                 >`
-              : "♫"
-          }
-        </div>
+      <div class="online-info">
+        <b>${escapeHtml(track.title)}</b>
+        <span>${escapeHtml(artist)}</span>
+      </div>
 
-        <div class="online-info">
+      <div class="online-actions">
+        <button class="online-play">▶</button>
+        <button class="online-add">＋</button>
+      </div>
+    `;
 
-          <b>
-            ${escapeHtml(
-              track.title ||
-              "Unknown title"
-            )}
-          </b>
+    item.querySelector(".online-play").onclick =
+      () => playAudius(track, index);
 
-          <span>
-            ${escapeHtml(
-              track.user?.name ||
-              track.user?.handle ||
-              "Unknown artist"
-            )}
-          </span>
+    item.querySelector(".online-add").onclick =
+      () => addAudius(track);
 
-        </div>
-
-        <div class="online-actions">
-
-          <button
-            class="online-play"
-            data-index="${index}"
-            title="Play"
-          >
-            ▶
-          </button>
-
-          <button
-            class="online-add"
-            data-index="${index}"
-            title="Add to playlist"
-          >
-            ＋
-          </button>
-
-        </div>
-      `;
-
-      item
-        .querySelector(".online-play")
-        .onclick = () =>
-          playAudiusTrack(
-            track,
-            index
-          );
-
-      item
-        .querySelector(".online-add")
-        .onclick = () =>
-          addAudiusToPlaylist(track);
-
-      container.appendChild(item);
-
-    }
-  );
-
+    box.appendChild(item);
+  });
 }
 
-/* =========================
-   AUDIUS PLAYBACK
-========================= */
+/* ---------- AUDIUS PLAYER ---------- */
 
-function getAudiusStreamUrl(track) {
-
-  return (
-    `${AUDIUS_API}/tracks/` +
-    `${encodeURIComponent(track.id)}` +
-    `/stream`
-  );
-
+function audiusUrl(track) {
+  return `${API}/tracks/${encodeURIComponent(track.id)}/stream`;
 }
 
-function playAudiusTrack(
-  track,
-  index = 0
-) {
+function playAudius(track, index) {
+  onlineIndex = index;
 
   current = {
-
-    id:
-      `audius-${track.id}`,
-
-    title:
-      track.title ||
-      "Unknown title",
-
+    title: track.title || "Unknown",
     artist:
       track.user?.name ||
       track.user?.handle ||
       "Unknown artist",
-
-    url:
-      getAudiusStreamUrl(track),
-
+    url: audiusUrl(track),
     artwork:
       track.artwork?.["480x480"] ||
       track.artwork?.["150x150"] ||
       ""
-
   };
 
-  onlineIndex = index;
-
   updatePlayer();
 
-  audio.src =
-    current.url;
+  audio.src = current.url;
 
   audio.play()
     .then(() => {
-
-      $("#playBtn")
-        .textContent = "❚❚";
-
+      $("#playBtn").textContent = "❚❚";
     })
     .catch(error => {
-
-      console.error(
-        "Playback error:",
-        error
-      );
-
-      $("#playBtn")
-        .textContent = "▶";
-
-      alert(
-        "This track could not be played."
-      );
-
+      console.error("Playback error:", error);
+      $("#playBtn").textContent = "▶";
+      alert("This track cannot be played.");
     });
-
 }
 
-function play(t) {
-
-  current = t;
+function play(track) {
+  current = track;
 
   updatePlayer();
 
-  if (!t.url) {
-
-    alert(
-      "This track does not have an audio URL."
-    );
-
+  if (!track.url) {
+    alert("This track has no audio URL.");
     return;
-
   }
 
-  audio.src = t.url;
+  audio.src = track.url;
 
   audio.play()
     .then(() => {
-
-      $("#playBtn")
-        .textContent = "❚❚";
-
+      $("#playBtn").textContent = "❚❚";
     })
     .catch(() => {
-
-      $("#playBtn")
-        .textContent = "▶";
-
+      $("#playBtn").textContent = "▶";
     });
-
 }
 
 function updatePlayer() {
-
   if (!current) return;
 
-  $("#playerTitle")
-    .textContent =
-    current.title ||
-    "Nothing playing";
+  $("#playerTitle").textContent =
+    current.title || "Nothing playing";
 
-  $("#playerArtist")
-    .textContent =
-    current.artist ||
-    "Unknown artist";
+  $("#playerArtist").textContent =
+    current.artist || "Unknown artist";
 
-  const cover =
-    current.artwork;
-
-  if (cover) {
-
-    $("#playerCover")
-      .innerHTML =
-      `<img
-        src="${escapeHtml(cover)}"
-        alt=""
-      >`;
-
+  if (current.artwork) {
+    $("#playerCover").innerHTML =
+      `<img src="${escapeHtml(current.artwork)}" alt="">`;
   } else {
-
-    $("#playerCover")
-      .textContent = "♪";
-
+    $("#playerCover").textContent = "♪";
   }
-
 }
 
-/* =========================
-   PLAYER
-========================= */
+/* ---------- PLAYER CONTROLS ---------- */
 
 $("#playBtn").onclick = () => {
-
   if (!current) return;
 
   if (audio.paused) {
-
-    audio.play()
-      .then(() => {
-
-        $("#playBtn")
-          .textContent = "❚❚";
-
-      })
-      .catch(() => {});
-
+    audio.play();
+    $("#playBtn").textContent = "❚❚";
   } else {
-
     audio.pause();
-
-    $("#playBtn")
-      .textContent = "▶";
-
+    $("#playBtn").textContent = "▶";
   }
-
 };
-
-audio.ontimeupdate = () => {
-
-  const duration =
-    audio.duration || 0;
-
-  $("#progress").value =
-    duration
-      ? (
-          audio.currentTime /
-          duration *
-          100
-        )
-      : 0;
-
-  $("#time").textContent =
-    fmt(audio.currentTime);
-
-  $("#duration").textContent =
-    fmt(duration);
-
-};
-
-audio.onended = () => {
-
-  $("#playBtn")
-    .textContent = "▶";
-
-  if (
-    onlineIndex >= 0 &&
-    onlineIndex <
-      onlineTracks.length - 1
-  ) {
-
-    playAudiusTrack(
-      onlineTracks[onlineIndex + 1],
-      onlineIndex + 1
-    );
-
-  }
-
-};
-
-$("#progress").oninput = () => {
-
-  if (audio.duration) {
-
-    audio.currentTime =
-      $("#progress").value /
-      100 *
-      audio.duration;
-
-  }
-
-};
-
-function fmt(n) {
-
-  if (!Number.isFinite(n))
-    return "0:00";
-
-  return `
-    ${Math.floor(n / 60)}:
-    ${String(
-      Math.floor(n % 60)
-    ).padStart(2, "0")}
-  `.replace(/\s/g, "");
-
-}
-
-/* =========================
-   NEXT / PREVIOUS
-========================= */
 
 $("#nextBtn").onclick = () => {
-
-  if (
-    onlineTracks.length &&
-    onlineIndex <
-      onlineTracks.length - 1
-  ) {
-
-    playAudiusTrack(
+  if (onlineIndex < onlineTracks.length - 1) {
+    playAudius(
       onlineTracks[onlineIndex + 1],
       onlineIndex + 1
     );
-
   }
-
 };
 
 $("#prevBtn").onclick = () => {
-
-  if (
-    onlineTracks.length &&
-    onlineIndex > 0
-  ) {
-
-    playAudiusTrack(
+  if (onlineIndex > 0) {
+    playAudius(
       onlineTracks[onlineIndex - 1],
       onlineIndex - 1
     );
-
   }
-
 };
 
-/* =========================
-   ADD AUDIUS TRACK
-========================= */
+audio.ontimeupdate = () => {
+  const duration = audio.duration || 0;
 
-function addAudiusToPlaylist(track) {
+  $("#progress").value =
+    duration
+      ? audio.currentTime / duration * 100
+      : 0;
 
-  if (!state.playlists.length) {
+  $("#time").textContent =
+    formatTime(audio.currentTime);
 
-    alert(
-      "Create a playlist first."
+  $("#duration").textContent =
+    formatTime(duration);
+};
+
+audio.onended = () => {
+  $("#playBtn").textContent = "▶";
+
+  if (onlineIndex < onlineTracks.length - 1) {
+    playAudius(
+      onlineTracks[onlineIndex + 1],
+      onlineIndex + 1
     );
+  }
+};
 
+$("#progress").oninput = () => {
+  if (audio.duration) {
+    audio.currentTime =
+      audio.duration *
+      ($("#progress").value / 100);
+  }
+};
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds)) return "0:00";
+
+  const min = Math.floor(seconds / 60);
+  const sec = Math.floor(seconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${min}:${sec}`;
+};
+
+/* ---------- ADD AUDIUS TRACK ---------- */
+
+function addAudius(track) {
+  if (!state.playlists.length) {
+    alert("Create a playlist first.");
     openPlaylistModal();
-
     return;
-
   }
 
-  const playlist =
-    state.playlists[0];
+  const playlist = state.playlists[0];
 
-  const newTrack = {
-
-    id:
-      Date.now(),
-
-    title:
-      track.title ||
-      "Unknown title",
-
+  playlist.tracks.push({
+    id: Date.now(),
+    title: track.title,
     artist:
       track.user?.name ||
       track.user?.handle ||
       "Unknown artist",
-
-    url:
-      getAudiusStreamUrl(track),
-
+    url: audiusUrl(track),
     artwork:
       track.artwork?.["480x480"] ||
       track.artwork?.["150x150"] ||
       "",
-
     favorite: false
-
-  };
-
-  playlist.tracks.push(
-    newTrack
-  );
+  });
 
   save();
 
-  alert(
-    `"${newTrack.title}" added to "${playlist.name}".`
-  );
-
+  alert("Added to your playlist.");
 }
 
-/* =========================
-   SEARCH
-========================= */
+/* ---------- SEARCH ---------- */
 
 let searchTimer;
 
 $("#search").oninput = () => {
-
   render();
 
   clearTimeout(searchTimer);
 
-  const value =
-    $("#search")
-      .value
-      .trim();
+  const value = $("#search").value.trim();
 
   if (!value) {
-
-    $("#onlineSection")
-      .classList.add("hidden");
-
+    $("#onlineSection").classList.add("hidden");
     return;
-
   }
 
-  searchTimer =
-    setTimeout(
-      () => searchAudius(value),
-      600
-    );
-
+  searchTimer = setTimeout(
+    () => searchAudius(value),
+    700
+  );
 };
 
 $("#search").onkeydown = e => {
-
   if (e.key === "Enter") {
-
-    e.preventDefault();
-
-    searchAudius(
-      $("#search").value
-    );
-
+    searchAudius($("#search").value);
   }
-
 };
 
-$("#onlineSearchBtn")
-  .onclick = () =>
-    searchAudius(
-      $("#search").value
-    );
+$("#onlineSearchBtn").onclick = () =>
+  searchAudius($("#search").value);
 
-$("#closeOnlineBtn")
-  .onclick = () =>
-    $("#onlineSection")
-      .classList.add("hidden");
+$("#closeOnlineBtn").onclick = () =>
+  $("#onlineSection").classList.add("hidden");
 
-/* =========================
-   THEME
-========================= */
+/* ---------- THEME ---------- */
 
 $("#themeBtn").onclick = () => {
-
-  document.body
-    .classList
-    .toggle("dark");
+  document.body.classList.toggle("dark");
 
   const dark =
-    document.body
-      .classList
-      .contains("dark");
+    document.body.classList.contains("dark");
 
   localStorage.setItem(
     "pulseTheme",
-    dark
-      ? "dark"
-      : "light"
+    dark ? "dark" : "light"
   );
 
-  $("#themeBtn")
-    .textContent =
-    dark
-      ? "🌙"
-      : "☀️";
-
+  $("#themeBtn").textContent =
+    dark ? "🌙" : "☀️";
 };
 
 if (
-  localStorage.getItem(
-    "pulseTheme"
-  ) === "dark"
+  localStorage.getItem("pulseTheme") === "dark"
 ) {
-
-  document.body
-    .classList
-    .add("dark");
-
-  $("#themeBtn")
-    .textContent = "🌙";
-
+  document.body.classList.add("dark");
+  $("#themeBtn").textContent = "🌙";
 }
 
-/* =========================
-   BACKUP
-========================= */
+/* ---------- BACKUP ---------- */
 
 $("#backupBtn").onclick = () => {
-
-  const blob =
-    new Blob(
-      [
-        JSON.stringify(
-          state,
-          null,
-          2
-        )
-      ],
-      {
-        type:
-          "application/json"
-      }
-    );
-
-  const a =
-    document.createElement("a");
-
-  a.href =
-    URL.createObjectURL(blob);
-
-  a.download =
-    "pulse-music-backup.json";
-
-  a.click();
-
-  URL.revokeObjectURL(
-    a.href
+  const blob = new Blob(
+    [JSON.stringify(state, null, 2)],
+    { type: "application/json" }
   );
 
+  const a = document.createElement("a");
+
+  a.href = URL.createObjectURL(blob);
+  a.download = "pulse-music-backup.json";
+  a.click();
+
+  URL.revokeObjectURL(a.href);
 };
 
-/* =========================
-   IMPORT
-========================= */
+/* ---------- IMPORT ---------- */
 
-$("#importBtn").onclick =
-  () =>
-    $("#fileInput").click();
+$("#importBtn").onclick = () =>
+  $("#fileInput").click();
 
-$("#fileInput").onchange =
-  e => {
+$("#fileInput").onchange = e => {
+  const file = e.target.files[0];
 
-    const file =
-      e.target.files[0];
+  if (!file) return;
 
-    if (!file) return;
+  const reader = new FileReader();
 
-    const reader =
-      new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
 
-    reader.onload = () => {
-
-      try {
-
-        const data =
-          JSON.parse(
-            reader.result
-          );
-
-        if (
-          !Array.isArray(
-            data.playlists
-          )
-        ) {
-          throw new Error();
-        }
-
-        state = data;
-
-        save();
-
-      } catch {
-
-        alert(
-          "Invalid backup file."
-        );
-
+      if (!Array.isArray(data.playlists)) {
+        throw new Error();
       }
 
-    };
+      state = data;
+      save();
 
-    reader.readAsText(file);
-
+    } catch {
+      alert("Invalid backup file.");
+    }
   };
 
-/* =========================
-   START
-========================= */
+  reader.readAsText(file);
+};
+
+/* ---------- START ---------- */
 
 render();
