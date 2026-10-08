@@ -9,7 +9,7 @@
 // ======================================================
 
 // فقط این مقدار را با API Key جدید خودت عوض کن.
-const AUDIUS_API_KEY = "YOUR_NEW_API_KEY";
+const AUDIUS_API_KEY = "0x550f583941371ce689ebaba5e69b8326c79d18f7";
 
 const STORAGE_KEY = "pulseMusic";
 
