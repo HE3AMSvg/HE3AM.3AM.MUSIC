@@ -1,28 +1,27 @@
-/* ======================================================
+
+/* =========================================================
    HE3AM MUSIC HUB
-   Audius + Jamendo
-   Search, playback, playlists, theme, backup & restore
-   ====================================================== */
+   Audius + Jamendo | Search | Player | Playlists | Backup
+   ========================================================= */
 
 "use strict";
 
-/* =========================
+/* -------------------------
    CONFIG
-   ========================= */
+   ------------------------- */
 
 const APP_NAME = "HE3AM";
 const STORAGE_KEY = "pulseMusic";
-
 const API_PROXY = "https://he3am.ghostrip82.workers.dev";
-
 const AUDIUS_SEARCH_URL = `${API_PROXY}/api/tracks/search`;
 const JAMENDO_SEARCH_URL = `${API_PROXY}/api/jamendo/tracks`;
-
 const DEFAULT_LIMIT = 15;
+const PLACEHOLDER_COVER =
+  "https://placehold.co/160x160/1b211d/39e58c?text=H";
 
-/* =========================
-   APP STATE
-   ========================= */
+/* -------------------------
+   STATE
+   ------------------------- */
 
 const state = {
   tracks: [],
@@ -32,7 +31,7 @@ const state = {
   currentPlaylist: null,
   searchQuery: "",
   searchToken: 0,
-  isSearching: false,
+  playToken: 0,
   provider: "all",
   theme: "dark",
   volume: 0.8,
@@ -40,33 +39,22 @@ const state = {
   shuffle: false
 };
 
-let audio = null;
+let audio;
 let elements = {};
+let noticeTimer;
 
-/* =========================
-   DOM HELPERS
-   ========================= */
+/* -------------------------
+   HELPERS
+   ------------------------- */
 
-function $(selectors, root = document) {
-  const list = Array.isArray(selectors)
-    ? selectors
-    : [selectors];
-
-  for (const selector of list) {
-    const found = root.querySelector(selector);
-    if (found) return found;
-  }
-
-  return null;
+function $(selector, root = document) {
+  return root.querySelector(selector);
 }
 
-function createElement(tag, className, text) {
+function createElement(tag, className = "", text = "") {
   const element = document.createElement(tag);
 
-  if (className) {
-    element.className = className;
-  }
-
+  if (className) element.className = className;
   if (text !== undefined && text !== null) {
     element.textContent = String(text);
   }
@@ -75,9 +63,7 @@ function createElement(tag, className, text) {
 }
 
 function setText(element, value) {
-  if (element) {
-    element.textContent = value ?? "";
-  }
+  if (element) element.textContent = value ?? "";
 }
 
 function safeArray(value) {
@@ -90,7 +76,7 @@ function getString(...values) {
       return value.trim();
     }
 
-    if (typeof value === "number") {
+    if (typeof value === "number" && Number.isFinite(value)) {
       return String(value);
     }
   }
@@ -98,17 +84,34 @@ function getString(...values) {
   return "";
 }
 
-function escapeHTML(value) {
-  return String(value ?? "").replace(
-    /[&<>"']/g,
-    character => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[character]
-  );
+function formatTime(value) {
+  if (!Number.isFinite(value) || value < 0) return "0:00";
+
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.floor(value % 60);
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function showMessage(message) {
+  console.info(`[${APP_NAME}] ${message}`);
+
+  let notice = $("#he3am-notice");
+
+  if (!notice) {
+    notice = createElement("div", "he3am-notice");
+    notice.id = "he3am-notice";
+    notice.setAttribute("role", "status");
+    document.body.appendChild(notice);
+  }
+
+  notice.textContent = message;
+  notice.hidden = false;
+
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    notice.hidden = true;
+  }, 3500);
 }
 
 function getProvider(track) {
@@ -119,13 +122,8 @@ function getProvider(track) {
     ""
   ).toLowerCase();
 
-  if (provider.includes("jamendo")) {
-    return "jamendo";
-  }
-
-  if (provider.includes("audius")) {
-    return "audius";
-  }
+  if (provider.includes("jamendo")) return "jamendo";
+  if (provider.includes("audius")) return "audius";
 
   if (
     track?.jamendoId ||
@@ -143,47 +141,100 @@ function uniqueTracks(tracks) {
   const seen = new Set();
 
   return tracks.filter(track => {
-    const key = `${getProvider(track)}:${
-      track.id || track.trackId || track.title
-    }`;
+    const id = getString(
+      track.id,
+      track.trackId,
+      track.title
+    );
+
+    const key = `${getProvider(track)}:${id}`;
 
     if (seen.has(key)) return false;
-
     seen.add(key);
+
     return true;
   });
 }
 
-/* =========================
+function normalizePlaylist(playlist) {
+  return {
+    id: getString(playlist?.id) ||
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: getString(playlist?.name, "My Playlist"),
+    tracks: safeArray(playlist?.tracks),
+    createdAt: playlist?.createdAt || new Date().toISOString()
+  };
+}
+
+/* -------------------------
+   DOM DISCOVERY
+   ------------------------- */
+
+function discoverElements() {
+  elements.searchForm = $("#searchForm");
+  elements.searchInput = $("#searchInput");
+  elements.searchButton = $("#searchButton");
+  elements.searchStatus = $("#searchStatus");
+  elements.results = $("#trackList");
+  elements.providerFilter = $("#providerFilter");
+
+  elements.playlists = $("#playlists");
+  elements.playlistGrid = $("#playlistGrid");
+  elements.playlistCount = $("#playlistCount");
+  elements.trackCount = $("#trackCount");
+  elements.currentPlaylist = $("#currentPlaylist");
+
+  elements.playerTitle = $("#playerTitle");
+  elements.playerArtist = $("#playerArtist");
+  elements.playerArtwork = $("#playerArtwork");
+  elements.playPauseButton = $("#playPauseBtn");
+  elements.progressBar = $("#progressBar");
+  elements.currentTime = $("#currentTime");
+  elements.duration = $("#duration");
+  elements.volume = $("#volume");
+
+  elements.themeButton = $("#themeToggle");
+  elements.exportButton = $("#exportBackup");
+  elements.importInput = $("#importBackup");
+  elements.newPlaylistButtons = [
+    $("#newPlaylist"),
+    $("#createPlaylist")
+  ].filter(Boolean);
+}
+
+/* -------------------------
    STORAGE
-   ========================= */
+   ------------------------- */
 
 function loadSavedData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-
     if (!raw) return;
 
     const saved = JSON.parse(raw);
 
+    // Support older backups that saved playlists as an array.
     if (Array.isArray(saved)) {
-      state.playlists = saved;
+      state.playlists = saved.map(normalizePlaylist);
       return;
     }
 
     state.playlists = safeArray(
       saved.playlists || saved.userPlaylists
-    );
+    ).map(normalizePlaylist);
 
-    state.theme = saved.theme || "dark";
-    state.volume = Number.isFinite(saved.volume)
-      ? saved.volume
-      : 0.8;
+    state.theme = saved.theme === "light" ? "light" : "dark";
+
+    const savedVolume = Number(saved.volume);
+    if (Number.isFinite(savedVolume)) {
+      state.volume = Math.min(1, Math.max(0, savedVolume));
+    }
 
     state.repeat = Boolean(saved.repeat);
     state.shuffle = Boolean(saved.shuffle);
   } catch (error) {
     console.warn("Could not load saved data:", error);
+    showMessage("اطلاعات ذخیره‌شده قابل خواندن نبود.");
   }
 }
 
@@ -192,7 +243,7 @@ function saveData() {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        version: 2,
+        version: 3,
         playlists: state.playlists,
         theme: state.theme,
         volume: state.volume,
@@ -206,17 +257,13 @@ function saveData() {
   }
 }
 
-/* =========================
-   HTTP HELPERS
-   ========================= */
+/* -------------------------
+   API
+   ------------------------- */
 
-async function fetchJSON(url, options = {}) {
+async function fetchJSON(url) {
   const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      ...options.headers
-    }
+    headers: { Accept: "application/json" }
   });
 
   if (!response.ok) {
@@ -225,10 +272,6 @@ async function fetchJSON(url, options = {}) {
 
   return response.json();
 }
-
-/* =========================
-   RESPONSE PARSERS
-   ========================= */
 
 function extractAudiusTracks(payload) {
   const candidates = [
@@ -243,9 +286,7 @@ function extractAudiusTracks(payload) {
   ];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate;
-    }
+    if (Array.isArray(candidate)) return candidate;
   }
 
   if (payload?.data && typeof payload.data === "object") {
@@ -254,9 +295,7 @@ function extractAudiusTracks(payload) {
     }
   }
 
-  if (payload?.id || payload?.title) {
-    return [payload];
-  }
+  if (payload?.id || payload?.title) return [payload];
 
   return [];
 }
@@ -278,34 +317,23 @@ function extractJamendoTracks(payload) {
   ];
 
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate;
-    }
+    if (Array.isArray(candidate)) return candidate;
   }
 
   if (payload?.results?.track) {
     return safeArray(payload.results.track);
   }
 
-  if (payload?.results?.headers && payload?.results?.results) {
-    return safeArray(payload.results.results);
-  }
-
   return [];
 }
 
-/* =========================
+/* -------------------------
    TRACK NORMALIZATION
-   ========================= */
+   ------------------------- */
 
 function normalizeAudiusTrack(track) {
-  const id = getString(
-    track?.id,
-    track?.trackId,
-    track?.permalink
-  );
-
   const artwork = track?.artwork || {};
+  const id = getString(track?.id, track?.trackId);
 
   return {
     ...track,
@@ -314,7 +342,7 @@ function normalizeAudiusTrack(track) {
     provider: "audius",
     title: getString(track?.title, track?.name, "Untitled"),
     artist: getString(
-      track?.artist,
+      typeof track?.artist === "string" ? track.artist : "",
       track?.user?.name,
       track?.user?.handle,
       track?.artist_name,
@@ -334,20 +362,12 @@ function normalizeAudiusTrack(track) {
       track?.stream_url,
       track?.audio
     ),
-    permalink: getString(
-      track?.permalink,
-      track?.url
-    )
+    permalink: getString(track?.permalink, track?.url)
   };
 }
 
 function normalizeJamendoTrack(track) {
-  const id = getString(
-    track?.id,
-    track?.trackId,
-    track?.jamendoId
-  );
-
+  const id = getString(track?.id, track?.trackId, track?.jamendoId);
   const artist = track?.artist || {};
 
   return {
@@ -375,9 +395,7 @@ function normalizeJamendoTrack(track) {
       track?.artwork,
       track?.thumbnail
     ),
-    duration: Number(
-      track?.duration || track?.duration_seconds
-    ) || 0,
+    duration: Number(track?.duration || track?.duration_seconds) || 0,
     streamUrl: getString(
       track?.streamUrl,
       track?.stream,
@@ -386,6 +404,8 @@ function normalizeJamendoTrack(track) {
       track?.audiodownload,
       track?.audioDownload
     ),
+    audiodownload: getString(track?.audiodownload),
+    audioDownload: getString(track?.audioDownload),
     permalink: getString(
       track?.shareurl,
       track?.shorturl,
@@ -395,112 +415,9 @@ function normalizeJamendoTrack(track) {
   };
 }
 
-/* =========================
-   AUDIO STREAMS
-   ========================= */
-
-function getStreamCandidates(track) {
-  const provider = getProvider(track);
-  const candidates = [];
-
-  if (track?.streamUrl) {
-    candidates.push(track.streamUrl);
-  }
-
-  if (track?.audio) {
-    candidates.push(track.audio);
-  }
-
-  if (provider === "audius") {
-    const id = getString(
-      track?.audiusId,
-      track?.id
-    );
-
-    if (id) {
-      candidates.push(
-        `${API_PROXY}/api/tracks/${encodeURIComponent(id)}/stream`
-      );
-
-      candidates.push(
-        `https://api.audius.co/v1/tracks/${encodeURIComponent(id)}/stream?app_name=${encodeURIComponent(APP_NAME)}`
-      );
-    }
-  }
-
-  if (provider === "jamendo") {
-    if (track?.audiodownload) {
-      candidates.push(track.audiodownload);
-    }
-
-    if (track?.audioDownload) {
-      candidates.push(track.audioDownload);
-    }
-  }
-
-  return [...new Set(
-    candidates.filter(url =>
-      typeof url === "string" &&
-      /^https?:\/\//i.test(url)
-    )
-  )];
-}
-
-async function playTrack(track, index = -1) {
-  if (!track) return;
-
-  const candidates = getStreamCandidates(track);
-
-  if (!candidates.length) {
-    showMessage(
-      "آدرس پخش برای این آهنگ موجود نیست. آهنگ دیگری را امتحان کن."
-    );
-    return;
-  }
-
-  state.currentTrack = track;
-  state.currentIndex = index;
-
-  updatePlayerUI();
-
-  let lastError = null;
-
-  for (const url of candidates) {
-    try {
-      audio.pause();
-      audio.src = url;
-      audio.load();
-
-      await audio.play();
-
-      track.streamUrl = url;
-      saveData();
-
-      return;
-    } catch (error) {
-      lastError = error;
-      console.warn("Stream failed:", url, error);
-    }
-  }
-
-  showMessage(
-    "این آهنگ پخش نشد. ممکن است لینک صوتی آن در دسترس نباشد."
-  );
-
-  console.warn("All stream candidates failed:", lastError);
-}
-
-/* Compatibility with older code */
-function playAudiusTrack(track, index = -1) {
-  return playTrack(
-    normalizeAudiusTrack(track),
-    index
-  );
-}
-
-/* =========================
-   SEARCH: AUDIUS
-   ========================= */
+/* -------------------------
+   SEARCH
+   ------------------------- */
 
 async function searchAudius(query) {
   const url = new URL(AUDIUS_SEARCH_URL);
@@ -516,11 +433,7 @@ async function searchAudius(query) {
     .filter(track => track.id || track.title);
 }
 
-/* =========================
-   SEARCH: JAMENDO
-   ========================= */
-
-async function jamendoFetch(query) {
+async function searchJamendo(query) {
   const url = new URL(JAMENDO_SEARCH_URL);
 
   url.searchParams.set("query", query);
@@ -529,60 +442,43 @@ async function jamendoFetch(query) {
   url.searchParams.set("limit", String(DEFAULT_LIMIT));
   url.searchParams.set("offset", "0");
 
-  return fetchJSON(url.toString());
-}
+  const payload = await fetchJSON(url.toString());
 
-async function searchJamendo(query) {
-  const payload = await jamendoFetch(query);
-
-  console.log("Jamendo response:", payload);
-
-  const rawTracks = extractJamendoTracks(payload);
-
-  console.log("Jamendo tracks found:", rawTracks.length);
-
-  return rawTracks
+  return extractJamendoTracks(payload)
     .map(normalizeJamendoTrack)
     .filter(track => track.id || track.title);
 }
 
-/* =========================
-   SEARCH: BOTH SERVICES
-   ========================= */
-
 async function searchTracks(query) {
-  const cleanedQuery = String(query || "").trim();
+  const cleaned = String(query || "").trim();
 
-  if (!cleanedQuery) {
+  if (!cleaned) {
     showMessage("نام آهنگ یا خواننده را وارد کن.");
+    elements.searchInput?.focus();
     return;
   }
 
   const token = ++state.searchToken;
+  state.searchQuery = cleaned;
 
-  state.searchQuery = cleanedQuery;
-  state.isSearching = true;
-
+  setText(elements.searchStatus, "در حال جستجو در Audius و Jamendo…");
   renderLoading();
 
-  const [audiusResult, jamendoResult] =
-    await Promise.allSettled([
-      searchAudius(cleanedQuery),
-      searchJamendo(cleanedQuery)
-    ]);
+  const [audiusResult, jamendoResult] = await Promise.allSettled([
+    searchAudius(cleaned),
+    searchJamendo(cleaned)
+  ]);
 
-  // Ignore an older search if the user searched again.
+  // Ignore results from an earlier search.
   if (token !== state.searchToken) return;
 
-  const audiusTracks =
-    audiusResult.status === "fulfilled"
-      ? audiusResult.value
-      : [];
+  const audiusTracks = audiusResult.status === "fulfilled"
+    ? audiusResult.value
+    : [];
 
-  const jamendoTracks =
-    jamendoResult.status === "fulfilled"
-      ? jamendoResult.value
-      : [];
+  const jamendoTracks = jamendoResult.status === "fulfilled"
+    ? jamendoResult.value
+    : [];
 
   if (audiusResult.status === "rejected") {
     console.error("Audius search failed:", audiusResult.reason);
@@ -592,304 +488,259 @@ async function searchTracks(query) {
     console.error("Jamendo search failed:", jamendoResult.reason);
   }
 
-  // Keep results from both services, even when one service fails.
-  state.tracks = uniqueTracks([
-    ...audiusTracks,
-    ...jamendoTracks
-  ]);
-
-  state.isSearching = false;
+  state.tracks = uniqueTracks([...audiusTracks, ...jamendoTracks]);
 
   renderTracks();
 
+  const failed = [
+    audiusResult.status === "rejected" ? "Audius" : "",
+    jamendoResult.status === "rejected" ? "Jamendo" : ""
+  ].filter(Boolean);
+
   setText(
     elements.searchStatus,
-    `Audius: ${audiusTracks.length} | Jamendo: ${jamendoTracks.length}`
+    `${state.tracks.length} tracks · Audius: ${audiusTracks.length} · Jamendo: ${jamendoTracks.length}` +
+      (failed.length ? ` · Unavailable: ${failed.join(", ")}` : "")
   );
 
   if (!state.tracks.length) {
     showMessage(
-      "نتیجه‌ای پیدا نشد. اتصال Worker و پاسخ API را بررسی کن."
+      failed.length === 2
+        ? "جستجو در هر دو سرویس ناموفق بود. Worker را بررسی کن."
+        : "نتیجه‌ای پیدا نشد. عبارت دیگری امتحان کن."
     );
   }
 }
-
-/* =========================
-   UI ELEMENT DISCOVERY
-   ========================= */
-
-function discoverElements() {
-  elements.searchInput = $([
-    "#searchInput",
-    "#search-input",
-    "#search",
-    "#query",
-    'input[type="search"]',
-    'input[placeholder*="Search" i]',
-    'input[placeholder*="جستجو"]'
-  ]);
-
-  elements.searchButton = $([
-    "#searchBtn",
-    "#searchButton",
-    "#search-button",
-    "#search-submit",
-    '[data-action="search"]'
-  ]);
-
-  elements.results = $([
-    "#trackList",
-    "#tracksList",
-    "#searchResults",
-    "#search-results",
-    "#results",
-    "#tracks",
-    ".track-list",
-    ".search-results"
-  ]);
-
-  elements.searchStatus = $([
-    "#searchStatus",
-    "#search-status",
-    "#resultsCount"
-  ]);
-
-  elements.playlists = $([
-    "#playlists",
-    "#playlistList",
-    "#playlist-list",
-    "#playlistContainer"
-  ]);
-
-  elements.playerTitle = $([
-    "#playerTitle",
-    "#nowPlayingTitle",
-    "#currentTrackTitle"
-  ]);
-
-  elements.playerArtist = $([
-    "#playerArtist",
-    "#nowPlayingArtist",
-    "#currentTrackArtist"
-  ]);
-
-  elements.playerArtwork = $([
-    "#playerArtwork",
-    "#nowPlayingArtwork",
-    "#currentTrackArtwork"
-  ]);
-
-  elements.audio = $([
-    "#audioPlayer",
-    "#audio",
-    "audio#player",
-    "audio"
-  ]);
-
-  elements.themeButton = $([
-    "#themeToggle",
-    "#theme-toggle",
-    '[data-action="theme"]'
-  ]);
-
-  elements.backupButton = $([
-    "#exportBackup",
-    "#backupExport",
-    "#export-backup",
-    '[data-action="export"]'
-  ]);
-
-  elements.restoreInput = $([
-    "#importBackup",
-    "#backupImport",
-    "#restoreBackup",
-    'input[type="file"][accept*="json"]'
-  ]);
-
-  elements.providerFilter = $([
-    "#providerFilter",
-    "#provider-filter"
-  ]);
-}
-
-/* =========================
-   CREATE MISSING CONTAINERS
-   ========================= */
-
-function ensureResultsContainer() {
-  if (elements.results) return;
-
-  const main = $([
-    "main",
-    "#app",
-    ".app",
-    ".container",
-    "body"
-  ]);
-
-  if (!main) return;
-
-  elements.results = createElement(
-    "div",
-    "he3am-results"
-  );
-
-  elements.results.id = "he3am-results";
-
-  main.appendChild(elements.results);
-}
-
-function ensureStatusContainer() {
-  if (elements.searchStatus) return;
-
-  if (!elements.results?.parentElement) return;
-
-  elements.searchStatus = createElement(
-    "p",
-    "he3am-search-status"
-  );
-
-  elements.searchStatus.id = "he3am-search-status";
-
-  elements.results.parentElement.insertBefore(
-    elements.searchStatus,
-    elements.results
-  );
-}
-
-/* =========================
-   RENDERING
-   ========================= */
 
 function renderLoading() {
-  if (elements.results) {
-    elements.results.replaceChildren(
-      createElement("p", "loading", "در حال جستجو در Audius و Jamendo…")
-    );
-  }
+  if (!elements.results) return;
 
-  setText(elements.searchStatus, "در حال دریافت نتایج…");
+  const loading = createElement("div", "empty-state");
+  loading.append(
+    createElement("span", "empty-icon", "♫"),
+    createElement("h3", "", "Searching for music…"),
+    createElement("p", "", "Checking Audius and Jamendo.")
+  );
+
+  elements.results.replaceChildren(loading);
+  setText(elements.trackCount, "…");
 }
+
+/* -------------------------
+   TRACK RENDERING
+   ------------------------- */
 
 function renderTracks() {
   if (!elements.results) return;
 
+  const filtered = state.tracks.filter(track =>
+    state.provider === "all" || getProvider(track) === state.provider
+  );
+
+  setText(elements.trackCount, filtered.length);
   elements.results.replaceChildren();
 
-  const filteredTracks = state.tracks.filter(track => {
-    return (
-      state.provider === "all" ||
-      getProvider(track) === state.provider
+  if (!filtered.length) {
+    const empty = createElement("div", "empty-state");
+    empty.append(
+      createElement("span", "empty-icon", "♫"),
+      createElement("h3", "", state.tracks.length
+        ? "No tracks for this filter"
+        : "Your next favorite starts here"),
+      createElement("p", "", state.tracks.length
+        ? "Choose another music platform."
+        : "Search for a song or artist to explore music.")
     );
-  });
 
-  if (!filteredTracks.length) {
-    elements.results.appendChild(
-      createElement("p", "empty-results", "آهنگی برای نمایش وجود ندارد.")
-    );
-
+    elements.results.appendChild(empty);
     return;
   }
 
   const fragment = document.createDocumentFragment();
 
-  filteredTracks.forEach(track => {
+  filtered.forEach(track => {
     const originalIndex = state.tracks.indexOf(track);
-
+    const provider = getProvider(track);
     const card = createElement("article", "track-card");
-    card.dataset.provider = getProvider(track);
+    card.dataset.provider = provider;
 
     const image = createElement("img", "track-artwork");
     image.alt = `${track.title} artwork`;
     image.loading = "lazy";
-    image.src = track.artwork || "";
+    image.src = track.artwork || PLACEHOLDER_COVER;
     image.onerror = () => {
-      image.style.visibility = "hidden";
+      image.onerror = null;
+      image.src = PLACEHOLDER_COVER;
     };
 
     const info = createElement("div", "track-info");
-
-    const title = createElement(
-      "div",
-      "track-title",
-      track.title
-    );
-
-    const artist = createElement(
-      "div",
-      "track-artist",
-      track.artist
-    );
-
-    const provider = createElement(
+    const title = createElement("div", "track-title", track.title);
+    const artist = createElement("div", "track-artist", track.artist);
+    const badge = createElement(
       "span",
-      `track-provider ${getProvider(track)}`,
-      getProvider(track) === "jamendo"
-        ? "Jamendo"
-        : "Audius"
+      `track-provider ${provider}`,
+      provider === "jamendo" ? "Jamendo" : "Audius"
     );
 
     const actions = createElement("div", "track-actions");
-
-    const playButton = createElement(
-      "button",
-      "track-play",
-      "▶ پخش"
-    );
-
+    const playButton = createElement("button", "track-play", "▶ Play");
     playButton.type = "button";
+    playButton.addEventListener("click", () => playTrack(track));
 
-    playButton.addEventListener("click", () => {
-      playTrack(track, originalIndex);
-    });
-
-    const addButton = createElement(
-      "button",
-      "track-add",
-      "+ پلی‌لیست"
-    );
-
+    const addButton = createElement("button", "track-add", "+ Playlist");
     addButton.type = "button";
+    addButton.addEventListener("click", () => addTrackToPlaylist(track));
 
-    addButton.addEventListener("click", () => {
-      addTrackToPlaylist(track);
-    });
-
-    info.append(title, artist, provider);
+    info.append(title, artist, badge);
     actions.append(playButton, addButton);
     card.append(image, info, actions);
     fragment.appendChild(card);
+
+    // Preserve original search index for next/previous playback.
+    card.dataset.trackIndex = String(originalIndex);
   });
 
   elements.results.appendChild(fragment);
 }
 
-/* =========================
-   PLAYER
-   ========================= */
+/* -------------------------
+   AUDIO STREAMS
+   ------------------------- */
+
+function getStreamCandidates(track) {
+  const provider = getProvider(track);
+  const candidates = [];
+
+  const addCandidate = value => {
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) {
+      candidates.push(value);
+    }
+  };
+
+  addCandidate(track?.streamUrl);
+  addCandidate(track?.stream_url);
+  addCandidate(track?.audio);
+  addCandidate(track?.stream);
+
+  if (provider === "audius") {
+    const id = getString(track?.audiusId, track?.id);
+
+    if (id) {
+      addCandidate(
+        `${API_PROXY}/api/tracks/${encodeURIComponent(id)}/stream`
+      );
+
+      addCandidate(
+        `https://api.audius.co/v1/tracks/${encodeURIComponent(id)}/stream?app_name=${encodeURIComponent(APP_NAME)}`
+      );
+    }
+  }
+
+  if (provider === "jamendo") {
+    addCandidate(track?.audiodownload);
+    addCandidate(track?.audioDownload);
+    addCandidate(track?.audio_url);
+  }
+
+  return [...new Set(candidates)];
+}
+
+async function playTrack(track, index = -1) {
+  if (!track || !audio) return;
+
+  const candidates = getStreamCandidates(track);
+
+  if (!candidates.length) {
+    showMessage("لینک پخش این آهنگ موجود نیست.");
+    return;
+  }
+
+  const playToken = ++state.playToken;
+  state.currentTrack = track;
+
+  const resolvedIndex = index >= 0
+    ? index
+    : state.tracks.findIndex(item =>
+        getProvider(item) === getProvider(track) &&
+        String(item.id) === String(track.id)
+      );
+
+  state.currentIndex = resolvedIndex;
+  updatePlayerUI();
+
+  let lastError = null;
+
+  for (const url of candidates) {
+    if (playToken !== state.playToken) return;
+
+    try {
+      audio.pause();
+      audio.src = url;
+      audio.load();
+
+      await audio.play();
+
+      if (playToken !== state.playToken) {
+        audio.pause();
+        return;
+      }
+
+      track.streamUrl = url;
+      saveData();
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn("Stream failed:", url, error);
+    }
+  }
+
+  if (playToken === state.playToken) {
+    showMessage(
+      "پخش این آهنگ ناموفق بود؛ ممکن است لینک صوتی در دسترس نباشد."
+    );
+    console.warn("All stream candidates failed:", lastError);
+  }
+}
 
 function updatePlayerUI() {
   const track = state.currentTrack;
-
   if (!track) return;
 
-  setText(elements.playerTitle, track.title);
-  setText(elements.playerArtist, track.artist);
+  setText(elements.playerTitle, track.title || "Untitled");
+  setText(elements.playerArtist, track.artist || "Unknown artist");
 
-  if (elements.playerArtwork && track.artwork) {
-    elements.playerArtwork.src = track.artwork;
+  if (elements.playerArtwork) {
+    elements.playerArtwork.onerror = () => {
+      elements.playerArtwork.onerror = null;
+      elements.playerArtwork.src = PLACEHOLDER_COVER;
+    };
+
+    elements.playerArtwork.src = track.artwork || PLACEHOLDER_COVER;
   }
 
-  document.title = `${track.title} — ${APP_NAME}`;
+  document.title = `${track.title || "Music"} — ${APP_NAME}`;
+  setText(elements.currentTime, "0:00");
+  setText(elements.duration, formatTime(track.duration || 0));
+
+  if (elements.progressBar) elements.progressBar.value = 0;
 }
 
 function playNext() {
-  if (!state.tracks.length) return;
+  if (!state.tracks.length) {
+    showMessage("اول یک آهنگ جستجو کن.");
+    return;
+  }
 
   let nextIndex;
 
   if (state.shuffle) {
-    nextIndex = Math.floor(Math.random() * state.tracks.length);
+    if (state.tracks.length === 1) {
+      nextIndex = 0;
+    } else {
+      do {
+        nextIndex = Math.floor(Math.random() * state.tracks.length);
+      } while (nextIndex === state.currentIndex);
+    }
   } else {
     nextIndex = state.currentIndex + 1;
 
@@ -908,6 +759,11 @@ function playNext() {
 function playPrevious() {
   if (!state.tracks.length) return;
 
+  if (audio && audio.currentTime > 3) {
+    audio.currentTime = 0;
+    return;
+  }
+
   let previousIndex = state.currentIndex - 1;
 
   if (previousIndex < 0) {
@@ -917,21 +773,68 @@ function playPrevious() {
   playTrack(state.tracks[previousIndex], previousIndex);
 }
 
-function setupPlayer() {
-  audio = elements.audio || createElement("audio");
+/* -------------------------
+   PLAYER SETUP
+   ------------------------- */
 
-  audio.id = audio.id || "he3am-audio";
+function setupPlayer() {
+  audio = $("#audioPlayer") || createElement("audio");
   audio.preload = "metadata";
   audio.volume = state.volume;
 
-  if (!audio.isConnected) {
-    document.body.appendChild(audio);
-  }
+  if (!audio.isConnected) document.body.appendChild(audio);
+
+  if (elements.volume) elements.volume.value = state.volume;
+
+  elements.playPauseButton?.addEventListener("click", async () => {
+    if (!state.currentTrack) {
+      showMessage("اول یک آهنگ انتخاب کن.");
+      return;
+    }
+
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch (error) {
+        console.warn("Resume failed:", error);
+        showMessage("پخش آهنگ شروع نشد.");
+      }
+    } else {
+      audio.pause();
+    }
+  });
+
+  audio.addEventListener("play", () => {
+    setText(elements.playPauseButton, "Ⅱ");
+    elements.playPauseButton?.setAttribute("aria-label", "Pause");
+  });
+
+  audio.addEventListener("pause", () => {
+    setText(elements.playPauseButton, "▶");
+    elements.playPauseButton?.setAttribute("aria-label", "Play");
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+
+    if (elements.progressBar) {
+      elements.progressBar.value = duration
+        ? (audio.currentTime / duration) * 100
+        : 0;
+    }
+
+    setText(elements.currentTime, formatTime(audio.currentTime));
+    setText(elements.duration, formatTime(duration));
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    setText(elements.duration, formatTime(audio.duration));
+  });
 
   audio.addEventListener("ended", () => {
-    if (state.repeat && state.currentTrack) {
+    if (state.repeat) {
       audio.currentTime = 0;
-      audio.play().catch(console.warn);
+      audio.play().catch(error => console.warn("Repeat failed:", error));
     } else {
       playNext();
     }
@@ -941,70 +844,40 @@ function setupPlayer() {
     console.warn("Audio playback error:", audio.error);
   });
 
-  const nextButton = $([
-    "#nextTrack",
-    "#nextBtn",
-    "#next",
-    '[data-action="next"]'
-  ]);
+  elements.progressBar?.addEventListener("input", () => {
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      audio.currentTime =
+        (Number(elements.progressBar.value) / 100) * audio.duration;
+    }
+  });
 
-  const previousButton = $([
-    "#previousTrack",
-    "#prevBtn",
-    "#previous",
-    '[data-action="previous"]'
-  ]);
-
-  const volumeControl = $([
-    "#volume",
-    "#volumeSlider",
-    'input[type="range"][data-volume]'
-  ]);
-
-  const shuffleButton = $([
-    "#shuffle",
-    "#shuffleBtn",
-    '[data-action="shuffle"]'
-  ]);
-
-  const repeatButton = $([
-    "#repeat",
-    "#repeatBtn",
-    '[data-action="repeat"]'
-  ]);
-
-  nextButton?.addEventListener("click", playNext);
-  previousButton?.addEventListener("click", playPrevious);
-
-  volumeControl?.addEventListener("input", () => {
-    state.volume = Number(volumeControl.value);
+  elements.volume?.addEventListener("input", () => {
+    state.volume = Math.min(1, Math.max(0, Number(elements.volume.value)));
     audio.volume = state.volume;
     saveData();
   });
 
+  $("#nextTrack")?.addEventListener("click", playNext);
+  $("#previousTrack")?.addEventListener("click", playPrevious);
+
+  const shuffleButton = $("#shuffle");
   shuffleButton?.addEventListener("click", () => {
     state.shuffle = !state.shuffle;
-    shuffleButton.setAttribute(
-      "aria-pressed",
-      String(state.shuffle)
-    );
+    shuffleButton.setAttribute("aria-pressed", String(state.shuffle));
     saveData();
   });
 
+  const repeatButton = $("#repeat");
   repeatButton?.addEventListener("click", () => {
     state.repeat = !state.repeat;
-    audio.loop = state.repeat;
-    repeatButton.setAttribute(
-      "aria-pressed",
-      String(state.repeat)
-    );
+    repeatButton.setAttribute("aria-pressed", String(state.repeat));
     saveData();
   });
 }
 
-/* =========================
+/* -------------------------
    PLAYLISTS
-   ========================= */
+   ------------------------- */
 
 function createPlaylist(name) {
   const cleanName = String(name || "").trim();
@@ -1014,37 +887,49 @@ function createPlaylist(name) {
     return null;
   }
 
-  const playlist = {
-    id: crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random()}`,
+  if (state.playlists.some(
+    playlist => playlist.name.toLowerCase() === cleanName.toLowerCase()
+  )) {
+    showMessage("یک پلی‌لیست با این نام از قبل وجود دارد.");
+    return null;
+  }
+
+  const playlist = normalizePlaylist({
+    id: globalThis.crypto?.randomUUID?.() ||
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     name: cleanName,
     tracks: [],
     createdAt: new Date().toISOString()
-  };
+  });
 
   state.playlists.push(playlist);
-
   saveData();
   renderPlaylists();
 
+  showMessage("پلی‌لیست ساخته شد.");
   return playlist;
+}
+
+function promptCreatePlaylist() {
+  const name = prompt("نام پلی‌لیست جدید:");
+
+  if (name !== null && name.trim()) {
+    createPlaylist(name);
+  }
 }
 
 function addTrackToPlaylist(track) {
   if (!state.playlists.length) {
-    const name = prompt("نام پلی‌لیست جدید:");
+    const name = prompt("برای این آهنگ یک پلی‌لیست بساز:");
 
     if (!name) return;
 
     const playlist = createPlaylist(name);
-
     if (!playlist) return;
 
     playlist.tracks.push({ ...track });
     saveData();
     renderPlaylists();
-
     showMessage("آهنگ به پلی‌لیست اضافه شد.");
     return;
   }
@@ -1061,25 +946,18 @@ function addTrackToPlaylist(track) {
 
   if (choice.trim() === "0") {
     const name = prompt("نام پلی‌لیست جدید:");
-
     if (!name) return;
 
     const playlist = createPlaylist(name);
-
     if (!playlist) return;
 
     playlist.tracks.push({ ...track });
   } else {
-    const index = Number(choice) - 1;
-    const playlist = state.playlists[index];
+    const playlist = state.playlists[Number(choice) - 1];
 
     if (!playlist) {
       showMessage("شماره پلی‌لیست معتبر نیست.");
       return;
-    }
-
-    if (!Array.isArray(playlist.tracks)) {
-      playlist.tracks = [];
     }
 
     const exists = playlist.tracks.some(item =>
@@ -1097,140 +975,291 @@ function addTrackToPlaylist(track) {
 
   saveData();
   renderPlaylists();
-
   showMessage("آهنگ به پلی‌لیست اضافه شد.");
 }
 
-function renderPlaylists() {
-  if (!elements.playlists) return;
+function openPlaylist(playlistId) {
+  const playlist = state.playlists.find(item => item.id === playlistId);
+  if (!playlist || !elements.currentPlaylist) return;
 
-  elements.playlists.replaceChildren();
+  state.currentPlaylist = playlist.id;
+  elements.currentPlaylist.replaceChildren();
 
-  state.playlists.forEach(playlist => {
-    if (!Array.isArray(playlist.tracks)) {
-      playlist.tracks = [];
-    }
+  const header = createElement("div", "section-header");
+  const headingGroup = createElement("div");
+  headingGroup.append(
+    createElement("span", "section-kicker", "YOUR COLLECTION"),
+    createElement("h2", "", playlist.name),
+    createElement("p", "", `${playlist.tracks.length} tracks`)
+  );
 
-    const section = createElement("section", "playlist-card");
+  const closeButton = createElement("button", "", "Close");
+  closeButton.type = "button";
+  closeButton.addEventListener("click", () => {
+    state.currentPlaylist = null;
+    elements.currentPlaylist.replaceChildren();
+  });
 
-    const heading = createElement(
-      "h3",
-      "playlist-name",
-      playlist.name
+  header.append(headingGroup, closeButton);
+
+  const list = createElement("div", "playlist-tracks");
+
+  if (!playlist.tracks.length) {
+    list.appendChild(
+      createElement("p", "empty-results", "هنوز آهنگی به این پلی‌لیست اضافه نشده.")
     );
+  }
 
-    const count = createElement(
+  playlist.tracks.forEach((track, index) => {
+    const row = createElement("div", "playlist-track");
+    const label = createElement(
       "span",
-      "playlist-count",
-      `${playlist.tracks.length} آهنگ`
+      "playlist-track-label",
+      `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}`
     );
 
-    const list = createElement("div", "playlist-tracks");
-
-    playlist.tracks.forEach((track, index) => {
-      const item = createElement("div", "playlist-track");
-
-      const label = createElement(
-        "span",
-        "playlist-track-label",
-        `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}`
+    const playButton = createElement("button", "", "▶");
+    playButton.type = "button";
+    playButton.addEventListener("click", () => {
+      const searchIndex = state.tracks.findIndex(item =>
+        getProvider(item) === getProvider(track) &&
+        String(item.id) === String(track.id)
       );
 
-      const playButton = createElement("button", "", "▶");
+      playTrack(track, searchIndex);
+    });
 
-      playButton.type = "button";
+    const removeButton = createElement("button", "", "Remove");
+    removeButton.type = "button";
+    removeButton.addEventListener("click", () => {
+      playlist.tracks.splice(index, 1);
+      saveData();
+      renderPlaylists();
+      openPlaylist(playlist.id);
+    });
 
-      playButton.addEventListener("click", () => {
-        state.currentPlaylist = playlist.id;
-        playTrack(track, index);
+    row.append(label, playButton, removeButton);
+    list.appendChild(row);
+  });
+
+  elements.currentPlaylist.append(header, list);
+  elements.currentPlaylist.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+}
+
+function renderPlaylists() {
+  const playlists = state.playlists;
+
+  setText(elements.playlistCount, playlists.length);
+
+  if (elements.playlists) {
+    elements.playlists.replaceChildren();
+
+    playlists.forEach(playlist => {
+      const button = createElement(
+        "button",
+        "sidebar-playlist",
+        playlist.name
+      );
+
+      button.type = "button";
+      button.title = playlist.name;
+      button.addEventListener("click", () => openPlaylist(playlist.id));
+
+      elements.playlists.appendChild(button);
+    });
+  }
+
+  if (elements.playlistGrid) {
+    elements.playlistGrid.replaceChildren();
+
+    if (!playlists.length) {
+      const empty = createElement("div", "empty-state");
+      empty.append(
+        createElement("span", "empty-icon", "＋"),
+        createElement("h3", "", "Build your own collection"),
+        createElement("p", "", "Create a playlist and save tracks you love.")
+      );
+      elements.playlistGrid.appendChild(empty);
+    }
+
+    playlists.forEach(playlist => {
+      playlist.tracks = safeArray(playlist.tracks);
+
+      const card = createElement("article", "playlist-card");
+      const heading = createElement("h3", "playlist-name", playlist.name);
+      const count = createElement(
+        "span",
+        "playlist-count",
+        `${playlist.tracks.length} آهنگ`
+      );
+
+      const openButton = createElement("button", "", "Open playlist");
+      openButton.type = "button";
+      openButton.addEventListener("click", () => openPlaylist(playlist.id));
+
+      const list = createElement("div", "playlist-tracks");
+
+      playlist.tracks.slice(0, 4).forEach((track, index) => {
+        const row = createElement("div", "playlist-track");
+        const label = createElement(
+          "span",
+          "playlist-track-label",
+          `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}`
+        );
+
+        const playButton = createElement("button", "", "▶");
+        playButton.type = "button";
+        playButton.setAttribute("aria-label", `Play ${track.title || "track"}`);
+
+        playButton.addEventListener("click", () => {
+          const searchIndex = state.tracks.findIndex(item =>
+            getProvider(item) === getProvider(track) &&
+            String(item.id) === String(track.id)
+          );
+
+          playTrack(track, searchIndex);
+        });
+
+        row.append(label, playButton);
+        list.appendChild(row);
       });
 
-      const removeButton = createElement("button", "", "حذف");
+      const deleteButton = createElement("button", "delete-playlist", "Delete playlist");
+      deleteButton.type = "button";
+      deleteButton.addEventListener("click", () => {
+        if (!confirm(`پلی‌لیست «${playlist.name}» حذف شود؟`)) return;
 
-      removeButton.type = "button";
+        state.playlists = state.playlists.filter(
+          item => item.id !== playlist.id
+        );
 
-      removeButton.addEventListener("click", () => {
-        playlist.tracks.splice(index, 1);
+        if (state.currentPlaylist === playlist.id) {
+          state.currentPlaylist = null;
+          elements.currentPlaylist?.replaceChildren();
+        }
+
         saveData();
         renderPlaylists();
       });
 
-      item.append(label, playButton, removeButton);
-      list.appendChild(item);
+      card.append(heading, count, openButton, list, deleteButton);
+      elements.playlistGrid.appendChild(card);
     });
+  }
 
-    const deleteButton = createElement(
-      "button",
-      "delete-playlist",
-      "حذف پلی‌لیست"
+  if (state.currentPlaylist) {
+    const selected = state.playlists.find(
+      playlist => playlist.id === state.currentPlaylist
     );
 
-    deleteButton.type = "button";
+    if (selected) {
+      // Do not automatically reopen or scroll during normal updates.
+      renderCurrentPlaylistWithoutScroll(selected);
+    }
+  }
+}
 
-    deleteButton.addEventListener("click", () => {
-      const confirmed = confirm(
-        `پلی‌لیست «${playlist.name}» حذف شود؟`
+function renderCurrentPlaylistWithoutScroll(playlist) {
+  if (!elements.currentPlaylist) return;
+
+  elements.currentPlaylist.replaceChildren();
+
+  const header = createElement("div", "section-header");
+  const group = createElement("div");
+
+  group.append(
+    createElement("span", "section-kicker", "YOUR COLLECTION"),
+    createElement("h2", "", playlist.name),
+    createElement("p", "", `${playlist.tracks.length} tracks`)
+  );
+
+  const close = createElement("button", "", "Close");
+  close.type = "button";
+  close.addEventListener("click", () => {
+    state.currentPlaylist = null;
+    elements.currentPlaylist.replaceChildren();
+  });
+
+  header.append(group, close);
+
+  const list = createElement("div", "playlist-tracks");
+
+  playlist.tracks.forEach((track, index) => {
+    const row = createElement("div", "playlist-track");
+    const label = createElement(
+      "span",
+      "playlist-track-label",
+      `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}`
+    );
+
+    const play = createElement("button", "", "▶");
+    play.type = "button";
+    play.addEventListener("click", () => {
+      const searchIndex = state.tracks.findIndex(item =>
+        getProvider(item) === getProvider(track) &&
+        String(item.id) === String(track.id)
       );
 
-      if (!confirmed) return;
+      playTrack(track, searchIndex);
+    });
 
-      state.playlists = state.playlists.filter(
-        item => item.id !== playlist.id
-      );
-
+    const remove = createElement("button", "", "Remove");
+    remove.type = "button";
+    remove.addEventListener("click", () => {
+      playlist.tracks.splice(index, 1);
       saveData();
       renderPlaylists();
     });
 
-    section.append(heading, count, list, deleteButton);
-    elements.playlists.appendChild(section);
+    row.append(label, play, remove);
+    list.appendChild(row);
   });
+
+  if (!playlist.tracks.length) {
+    list.appendChild(
+      createElement("p", "empty-results", "هنوز آهنگی در این پلی‌لیست نیست.")
+    );
+  }
+
+  elements.currentPlaylist.append(header, list);
 }
 
-/* =========================
+/* -------------------------
    THEME
-   ========================= */
+   ------------------------- */
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
 
-  document.documentElement.classList.toggle(
-    "light-theme",
-    state.theme === "light"
-  );
-
-  document.documentElement.classList.toggle(
-    "dark-theme",
-    state.theme === "dark"
-  );
-
   if (elements.themeButton) {
+    elements.themeButton.textContent =
+      state.theme === "dark" ? "☀️ Toggle theme" : "🌙 Toggle theme";
+
     elements.themeButton.setAttribute(
       "aria-pressed",
       String(state.theme === "light")
     );
-
-    elements.themeButton.textContent =
-      state.theme === "light" ? "☀️" : "🌙";
   }
 }
 
 function toggleTheme() {
   state.theme = state.theme === "dark" ? "light" : "dark";
-
   applyTheme();
   saveData();
 }
 
-/* =========================
+/* -------------------------
    BACKUP / RESTORE
-   ========================= */
+   ------------------------- */
 
 function exportBackup() {
   const backup = {
     app: APP_NAME,
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     playlists: state.playlists,
     theme: state.theme,
@@ -1254,15 +1283,16 @@ function exportBackup() {
   link.click();
   link.remove();
 
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showMessage("فایل بکاپ آماده شد.");
 }
 
 async function importBackup(file) {
   if (!file) return;
 
   try {
-    const text = await file.text();
-    const backup = JSON.parse(text);
+    const content = await file.text();
+    const backup = JSON.parse(content);
 
     const playlists = Array.isArray(backup)
       ? backup
@@ -1272,24 +1302,28 @@ async function importBackup(file) {
       throw new Error("Invalid backup format");
     }
 
-    state.playlists = playlists.map(playlist => ({
-      ...playlist,
-      tracks: safeArray(playlist.tracks)
-    }));
+    state.playlists = playlists.map(normalizePlaylist);
 
-    if (backup.theme) state.theme = backup.theme;
+    if (backup.theme === "light" || backup.theme === "dark") {
+      state.theme = backup.theme;
+    }
+
     if (Number.isFinite(backup.volume)) {
-      state.volume = backup.volume;
+      state.volume = Math.min(1, Math.max(0, backup.volume));
     }
 
     state.repeat = Boolean(backup.repeat);
     state.shuffle = Boolean(backup.shuffle);
 
-    saveData();
-    applyTheme();
-    renderPlaylists();
-
     if (audio) audio.volume = state.volume;
+    if (elements.volume) elements.volume.value = state.volume;
+
+    $("#repeat")?.setAttribute("aria-pressed", String(state.repeat));
+    $("#shuffle")?.setAttribute("aria-pressed", String(state.shuffle));
+
+    applyTheme();
+    saveData();
+    renderPlaylists();
 
     showMessage("بکاپ با موفقیت بازیابی شد.");
   } catch (error) {
@@ -1298,124 +1332,84 @@ async function importBackup(file) {
   }
 }
 
-/* =========================
-   FILTERS
-   ========================= */
+/* -------------------------
+   EVENT SETUP
+   ------------------------- */
 
-function setupProviderFilter() {
-  if (!elements.providerFilter) return;
+function setupSearch() {
+  elements.searchForm?.addEventListener("submit", event => {
+    event.preventDefault();
+    searchTracks(elements.searchInput?.value || "");
+  });
 
-  elements.providerFilter.addEventListener("change", () => {
+  elements.searchButton?.addEventListener("click", event => {
+    // The button belongs to the form; prevent duplicate submissions.
+    if (!elements.searchForm) {
+      event.preventDefault();
+      searchTracks(elements.searchInput?.value || "");
+    }
+  });
+
+  elements.providerFilter?.addEventListener("change", () => {
     state.provider = elements.providerFilter.value || "all";
     renderTracks();
   });
 }
 
-/* =========================
-   SEARCH EVENTS
-   ========================= */
-
-function setupSearch() {
-  if (elements.searchButton) {
-    elements.searchButton.addEventListener("click", () => {
-      searchTracks(elements.searchInput?.value || "");
-    });
-  }
-
-  if (elements.searchInput) {
-    elements.searchInput.addEventListener("keydown", event => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        searchTracks(elements.searchInput.value);
-      }
-    });
-  }
-
-  // Support an existing search form without requiring a new HTML file.
-  const form = elements.searchInput?.closest("form");
-
-  if (form) {
-    form.addEventListener("submit", event => {
-      event.preventDefault();
-      searchTracks(elements.searchInput?.value || "");
-    });
-  }
-}
-
-/* =========================
-   BUTTON EVENTS
-   ========================= */
-
 function setupButtons() {
   elements.themeButton?.addEventListener("click", toggleTheme);
+  elements.exportButton?.addEventListener("click", exportBackup);
 
-  elements.backupButton?.addEventListener("click", exportBackup);
-
-  elements.restoreInput?.addEventListener("change", async event => {
+  elements.importInput?.addEventListener("change", async event => {
     const file = event.target.files?.[0];
-
     await importBackup(file);
-
     event.target.value = "";
   });
 
-  const newPlaylistButton = $([
-    "#newPlaylist",
-    "#createPlaylist",
-    "#create-playlist",
-    '[data-action="new-playlist"]'
-  ]);
+  elements.newPlaylistButtons.forEach(button => {
+    button.addEventListener("click", promptCreatePlaylist);
+  });
 
-  newPlaylistButton?.addEventListener("click", () => {
-    const name = prompt("نام پلی‌لیست جدید:");
+  $("#backButton")?.addEventListener("click", () => history.back());
+  $("#forwardButton")?.addEventListener("click", () => history.forward());
 
-    if (name) createPlaylist(name);
+  // Highlight the matching navigation link.
+  document.querySelectorAll(".nav-link").forEach(link => {
+    link.addEventListener("click", () => {
+      document.querySelectorAll(".nav-link").forEach(item => {
+        item.classList.toggle("active", item === link);
+      });
+    });
   });
 }
 
-/* =========================
-   NOTIFICATIONS
-   ========================= */
+/* -------------------------
+   INITIALIZATION
+   ------------------------- */
 
-function showMessage(message) {
-  console.info(`[${APP_NAME}] ${message}`);
+function initHE3AM() {
+  discoverElements();
+  loadSavedData();
 
-  let notice = $("#he3am-notice");
+  setupPlayer();
+  setupSearch();
+  setupButtons();
 
-  if (!notice) {
-    notice = createElement("div", "he3am-notice");
-    notice.id = "he3am-notice";
+  applyTheme();
+  renderPlaylists();
+  renderTracks();
 
-    Object.assign(notice.style, {
-      position: "fixed",
-      bottom: "20px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: "99999",
-      padding: "12px 18px",
-      borderRadius: "12px",
-      background: "#222",
-      color: "#fff",
-      maxWidth: "90%",
-      textAlign: "center"
-    });
+  if (elements.volume) elements.volume.value = state.volume;
 
-    document.body.appendChild(notice);
-  }
+  $("#repeat")?.setAttribute("aria-pressed", String(state.repeat));
+  $("#shuffle")?.setAttribute("aria-pressed", String(state.shuffle));
 
-  notice.textContent = message;
-  notice.hidden = false;
-
-  clearTimeout(notice._hideTimer);
-
-  notice._hideTimer = setTimeout(() => {
-    notice.hidden = true;
-  }, 3500);
+  console.info(`${APP_NAME} Music Hub initialized.`);
 }
 
-/* =========================
-   OPTIONAL GLOBAL API
-   ========================= */
+/* -------------------------
+   PUBLIC API
+   ------------------------- */
 
 window.HE3AM = {
   search: searchTracks,
@@ -1432,32 +1426,8 @@ window.HE3AM = {
   }
 };
 
-/* =========================
-   INITIALIZATION
-   ========================= */
-
-function initHE3AM() {
-  discoverElements();
-
-  ensureResultsContainer();
-  ensureStatusContainer();
-
-  loadSavedData();
-  setupPlayer();
-  setupSearch();
-  setupButtons();
-  setupProviderFilter();
-
-  applyTheme();
-  renderPlaylists();
-
-  console.info(`${APP_NAME} Music Hub initialized.`);
-}
-
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initHE3AM, {
-    once: true
-  });
+  document.addEventListener("DOMContentLoaded", initHE3AM, { once: true });
 } else {
   initHE3AM();
 }
