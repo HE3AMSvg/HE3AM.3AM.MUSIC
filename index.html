@@ -1,336 +1,181 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <title>HE3AM.3AM.MUSIC</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101310">
+  <meta name="description" content="HE3AM Music Hub — discover, search and play music.">
+  <title>HE3AM — Music Hub</title>
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body data-theme="dark">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="logo" href="#home" aria-label="HE3AM home">
+        <span class="logo-mark">H</span>
+        <span>HE3AM<span class="logo-muted">.MUSIC</span></span>
+      </a>
 
-  <!-- =========================
-       HEADER
-       ========================= -->
+      <nav class="side-nav">
+        <a class="nav-link active" href="#home"><span>⌂</span> Home</a>
+        <a class="nav-link" href="#discover"><span>⌕</span> Discover</a>
+        <a class="nav-link" href="#library"><span>♫</span> Your Library</a>
+      </nav>
 
-  <header class="header">
-    <div class="container header-inner">
-
-      <div class="logo">
-        <span>HE3AM</span>.3AM.MUSIC
-      </div>
-
-      <button
-        id="themeToggle"
-        type="button"
-        title="Toggle theme"
-      >
-        ☀
+      <div class="sidebar-heading">YOUR COLLECTION</div>
+      <button id="newPlaylist" class="sidebar-create" type="button">
+        <span>＋</span> Create playlist
       </button>
+      <div id="playlists" class="sidebar-playlists"></div>
 
-    </div>
-  </header>
+      <div class="sidebar-bottom">
+        <button id="exportBackup" type="button">↥ Export backup</button>
+        <label class="sidebar-import" for="importBackup">↧ Import backup</label>
+        <input id="importBackup" type="file" accept=".json,application/json" hidden>
+        <button id="themeToggle" type="button">☀️ Toggle theme</button>
+      </div>
+    </aside>
 
+    <main class="main-content" id="home">
+      <header class="topbar">
+        <div class="topbar-arrows">
+          <button id="backButton" type="button" aria-label="Back">‹</button>
+          <button id="forwardButton" type="button" aria-label="Forward">›</button>
+        </div>
 
-  <!-- =========================
-       MAIN
-       ========================= -->
+        <form id="searchForm" class="topbar-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="searchInput" type="search"
+                 placeholder="What do you want to listen to?"
+                 autocomplete="off" aria-label="Search songs and artists">
+          <button id="searchButton" type="submit">Search</button>
+        </form>
 
-  <main>
-
-    <div class="container">
-
-      <!-- HERO -->
+        <div class="topbar-actions">
+          <span class="online-indicator"></span>
+          <span>Music Hub</span>
+        </div>
+      </header>
 
       <section class="hero">
+        <div class="hero-content">
+          <div class="hero-eyebrow">
+            <span class="hero-dot"></span> YOUR MUSIC. YOUR WORLD.
+          </div>
+          <h1>Feel the <span>frequency.</span></h1>
+          <p>Discover tracks, find new artists and build your own sound.</p>
 
-        <h1>
-          HE3AM<span>.MUSIC</span>
-        </h1>
-
-        <p>
-          Search, discover and play your favorite music.
-        </p>
-
-
-        <!-- SEARCH -->
-
-        <div class="search-box">
-
-          <input
-            id="searchInput"
-            type="search"
-            placeholder="Search songs or artists..."
-            autocomplete="off"
-          >
-
-          <button
-            id="searchButton"
-            type="button"
-          >
-            🔎
-          </button>
-
+          <div class="stats">
+            <div class="stat">
+              <strong id="playlistCount">0</strong>
+              <span>Playlists</span>
+            </div>
+            <div class="stat">
+              <strong id="trackCount">0</strong>
+              <span>Search results</span>
+            </div>
+            <div class="stat">
+              <strong>∞</strong>
+              <span>Possibilities</span>
+            </div>
+          </div>
         </div>
 
-
-        <!-- STATS -->
-
-        <div class="stats">
-
-          <div class="stat">
-            <strong id="playlistCount">0</strong>
-            <span>Playlists</span>
-          </div>
-
-          <div class="stat">
-            <strong id="trackCount">0</strong>
-            <span>Tracks</span>
-          </div>
-
-          <div class="stat">
-            <strong>∞</strong>
-            <span>Music</span>
-          </div>
-
+        <div class="hero-art" aria-hidden="true">
+          <div class="hero-orbit orbit-one"></div>
+          <div class="hero-orbit orbit-two"></div>
+          <div class="hero-disc"><div class="hero-disc-center">H</div></div>
+          <span class="hero-spark spark-one">✳</span>
+          <span class="hero-spark spark-two">✦</span>
         </div>
-
       </section>
 
-
-      <!-- =========================
-           ACTIONS
-           ========================= -->
-
-      <section>
-
-        <div class="actions">
-
-          <button
-            id="newPlaylistBtn"
-            class="primary"
-            type="button"
-          >
-            + New Playlist
-          </button>
-
-          <button
-            id="exportBtn"
-            type="button"
-          >
-            Export
-          </button>
-
-          <button
-            id="importBtn"
-            type="button"
-          >
-            Import
-          </button>
-
-          <input
-            id="importFile"
-            type="file"
-            accept=".json,application/json"
-            hidden
-          >
-
-        </div>
-
-      </section>
-
-
-      <!-- =========================
-           ONLINE MUSIC
-           ========================= -->
-
-      <section
-        id="onlineSection"
-        class="hidden"
-      >
-
+      <section class="content-section" id="discover">
         <div class="section-header">
-
           <div>
-            <h2>Online Music</h2>
-            <p id="onlineStatus">
-              Search results will appear here.
-            </p>
+            <span class="section-kicker">FIND YOUR NEXT FAVORITE</span>
+            <h2>Discover music</h2>
+            <p id="searchStatus" role="status">Search Audius and Jamendo to get started.</p>
           </div>
 
+          <label class="filter-wrap">
+            <span class="sr-only">Filter music provider</span>
+            <select id="providerFilter">
+              <option value="all">All platforms</option>
+              <option value="audius">Audius</option>
+              <option value="jamendo">Jamendo</option>
+            </select>
+          </label>
         </div>
 
-        <div id="onlineResults"></div>
-
+        <div id="trackList" class="track-grid">
+          <div class="empty-state">
+            <span class="empty-icon">♫</span>
+            <h3>Your next favorite starts here</h3>
+            <p>Search for a song or artist to explore music.</p>
+          </div>
+        </div>
       </section>
 
-
-      <!-- =========================
-           PLAYLISTS
-           ========================= -->
-
-      <section>
-
+      <section class="content-section library-section" id="library">
         <div class="section-header">
-
           <div>
-            <h2>Your Playlists</h2>
-            <p>
-              Manage your music collection.
-            </p>
+            <span class="section-kicker">MADE BY YOU</span>
+            <h2>Your playlists</h2>
+            <p>Your saved tracks, all in one place.</p>
           </div>
-
+          <button id="createPlaylist" class="primary" type="button">＋ New playlist</button>
         </div>
-
-        <div id="playlistGrid"></div>
-
-      </section>
-
-
-      <!-- =========================
-           CURRENT PLAYLIST
-           ========================= -->
-
-      <section>
-
+        <div id="playlistGrid" class="playlist-grid"></div>
         <div id="currentPlaylist"></div>
-
       </section>
 
-    </div>
-
-  </main>
-
-
-  <!-- =========================
-       PLAYER
-       ========================= -->
-
-  <div
-    id="player"
-    class="music-player"
-  >
-
-    <div class="player-inner">
-
-      <img
-        id="playerCover"
-        class="player-cover"
-        src="https://via.placeholder.com/500?text=HE3AM"
-        alt="Current track"
-      >
-
-      <div class="player-info">
-
-        <div
-          id="playerTitle"
-          class="player-title"
-        >
-          Nothing playing
-        </div>
-
-        <div
-          id="playerArtist"
-          class="player-artist"
-        >
-          HE3AM
-        </div>
-
-      </div>
-
-
-      <div class="player-controls">
-
-        <button
-          id="playPauseBtn"
-          type="button"
-        >
-          ▶
-        </button>
-
-      </div>
-
-
-      <div class="player-progress">
-
-        <span id="currentTime">
-          0:00
-        </span>
-
-        <input
-          id="progressBar"
-          type="range"
-          min="0"
-          max="100"
-          value="0"
-        >
-
-        <span id="duration">
-          0:00
-        </span>
-
-      </div>
-
-    </div>
-
+      <footer class="app-footer">
+        <span>HE3AM<span class="logo-muted">.MUSIC</span></span>
+        <span>Powered by Audius &amp; Jamendo</span>
+      </footer>
+    </main>
   </div>
 
+  <div id="he3am-notice" class="he3am-notice" role="status" aria-live="polite" hidden></div>
 
-  <!-- =========================
-       PLAYLIST DIALOG
-       ========================= -->
-
-  <dialog id="playlistDialog">
-
-    <h2>
-      Create Playlist
-    </h2>
-
-    <form id="playlistForm">
-
-      <input
-        id="playlistName"
-        type="text"
-        placeholder="Playlist name..."
-        maxlength="50"
-        required
-        autocomplete="off"
-      >
-
-      <div class="dialog-actions">
-
-        <button
-          id="cancelPlaylistBtn"
-          type="button"
-        >
-          Cancel
-        </button>
-
-        <button
-          class="primary"
-          type="submit"
-        >
-          Create
-        </button>
-
+  <footer class="music-player">
+    <div class="player-track">
+      <img id="playerArtwork" class="player-cover"
+           src="https://placehold.co/160x160/1b211d/39e58c?text=H"
+           alt="Current track artwork">
+      <div class="player-info">
+        <div id="playerTitle" class="player-title">Nothing playing</div>
+        <div id="playerArtist" class="player-artist">HE3AM Music Hub</div>
       </div>
+    </div>
 
-    </form>
+    <div class="player-center">
+      <div class="player-controls">
+        <button id="shuffle" type="button" title="Shuffle" aria-label="Shuffle" aria-pressed="false">⤨</button>
+        <button id="previousTrack" type="button" title="Previous track" aria-label="Previous track">|◀</button>
+        <button id="playPauseBtn" class="play-main" type="button"
+                title="Play or pause" aria-label="Play or pause">▶</button>
+        <button id="nextTrack" type="button" title="Next track" aria-label="Next track">▶|</button>
+        <button id="repeat" type="button" title="Repeat track" aria-label="Repeat track" aria-pressed="false">↻</button>
+      </div>
+      <div class="player-progress">
+        <span id="currentTime">0:00</span>
+        <input id="progressBar" type="range" min="0" max="100" value="0"
+               step="0.1" aria-label="Playback position">
+        <span id="duration">0:00</span>
+      </div>
+    </div>
 
-  </dialog>
+    <div class="player-volume">
+      <span aria-hidden="true">♫</span>
+      <input id="volume" type="range" min="0" max="1" value="0.8"
+             step="0.01" aria-label="Volume">
+    </div>
+  </footer>
 
-
-  <!-- =========================
-       APP
-       ========================= -->
-
+  <audio id="audioPlayer" preload="metadata"></audio>
   <script src="app.js"></script>
-
 </body>
 </html>
