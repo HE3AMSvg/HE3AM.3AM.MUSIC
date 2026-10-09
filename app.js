@@ -1,10 +1,10 @@
 
 /* ======================================================
-   HE3AM.3AM.MUSIC — Audius
+   HE3AM.3AM.MUSIC — Audius via Cloudflare Worker
    Search, playback, playlists, theme and backup
    ====================================================== */
 
-const AUDIUS_API_KEY = "0x550f583941371ce689ebaba5e69b8326c79d18f7";
+const API_PROXY = "https://he3am.ghostrip82.workers.dev";
 const STORAGE_KEY = "pulseMusic";
 const APP_NAME = "HE3AM";
 
@@ -64,7 +64,6 @@ function loadState() {
     if (!saved) return;
 
     const parsed = JSON.parse(saved);
-
     state = { ...state, ...parsed };
 
     if (!Array.isArray(state.playlists)) {
@@ -77,6 +76,10 @@ function loadState() {
         ? playlist.tracks
         : []
     }));
+
+    if (!["dark", "light"].includes(state.theme)) {
+      state.theme = "dark";
+    }
   } catch (error) {
     console.error("Could not load saved state:", error);
   }
@@ -96,7 +99,7 @@ function getArtwork(track) {
     artwork?.["480x480"] ||
     artwork?.["150x150"] ||
     track?.thumbnail ||
-    "https://via.placeholder.com/500?text=HE3AM"
+    "https://placehold.co/500x500?text=HE3AM"
   );
 }
 
@@ -117,10 +120,6 @@ function getTrackId(track) {
   return track?.audiusId || track?.id || null;
 }
 
-/*
-  Stream URLs are generated from the track ID.
-  Different Audius gateways are tried if one fails.
-*/
 function getStreamCandidates(track) {
   const id = getTrackId(track);
   if (!id) return [];
@@ -206,10 +205,10 @@ function addTrackToPlaylist(track, playlistId) {
   playlist.tracks.push({
     id: createId(),
     audiusId: trackId,
-    title: track.title || "Unknown Track",
-    artist: track.artist || "Unknown Artist",
-    artwork: track.artwork || "",
-    streamUrl: track.streamUrl || "",
+    title: getTrackTitle(track),
+    artist: getArtist(track),
+    artwork: track.artwork || getArtwork(track),
+    streamUrl: track.streamUrl || streamUrl(track),
     duration: Number(track.duration) || 0
   });
 
@@ -217,38 +216,38 @@ function addTrackToPlaylist(track, playlistId) {
   renderAll();
 }
 
-/* ---------------- Audius API ---------------- */
+/* ---------------- Audius API via Worker ---------------- */
 
 async function audiusFetch(path, options = {}) {
-  let lastError;
+  const sourceUrl = new URL(path, "https://audius.local");
 
-  for (const base of AUDIUS_BASES) {
-    try {
-      const headers = {
-        ...(AUDIUS_API_KEY &&
-        AUDIUS_API_KEY !== "YOUR_AUDIUS_API_KEY"
-          ? { "X-API-Key": AUDIUS_API_KEY }
-          : {}),
-        ...options.headers
-      };
-
-      const response = await fetch(`${base}${path}`, {
-        ...options,
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`Audius HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      if (error.name === "AbortError") throw error;
-      lastError = error;
-    }
+  if (sourceUrl.pathname !== "/tracks/search") {
+    throw new Error("Unsupported Audius API endpoint.");
   }
 
-  throw lastError || new Error("Audius is unavailable.");
+  const requestUrl = new URL(
+    "/api/tracks/search",
+    API_PROXY
+  );
+
+  sourceUrl.searchParams.forEach((value, key) => {
+    requestUrl.searchParams.set(key, value);
+  });
+
+  const response = await fetch(requestUrl.toString(), {
+    ...options,
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...options.headers
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Music proxy HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /* ---------------- Search ---------------- */
@@ -344,6 +343,7 @@ function renderOnline() {
         src="${escapeHtml(getArtwork(track))}"
         alt="${escapeHtml(getTrackTitle(track))}"
         loading="lazy"
+        onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
       >
 
       <div class="track-info">
@@ -469,7 +469,6 @@ function startStreamCandidate(index, requestId) {
       console.warn(`Audius stream attempt ${index + 1} failed:`, error);
 
       if (error.name === "NotAllowedError") {
-        // Browser requires a fresh user gesture.
         updatePlayButton();
         return;
       }
@@ -542,7 +541,14 @@ function updatePlayer() {
 
   if (title) title.textContent = track.title || "Unknown Track";
   if (artist) artist.textContent = track.artist || "Unknown Artist";
-  if (cover) cover.src = track.artwork || getArtwork(track);
+
+  if (cover) {
+    cover.onerror = () => {
+      cover.onerror = null;
+      cover.src = "https://placehold.co/500x500?text=HE3AM";
+    };
+    cover.src = track.artwork || getArtwork(track);
+  }
 
   updatePlayButton();
   updateProgress();
@@ -670,9 +676,10 @@ function renderCurrentPlaylist() {
         <div class="track-card">
           <img
             class="track-cover"
-            src="${escapeHtml(track.artwork || "https://via.placeholder.com/500?text=HE3AM")}"
+            src="${escapeHtml(track.artwork || "https://placehold.co/500x500?text=HE3AM")}"
             alt="${escapeHtml(track.title)}"
             loading="lazy"
+            onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
           >
 
           <div class="track-info">
@@ -743,6 +750,7 @@ function setupSearch() {
 
     if (!query) {
       if (searchController) searchController.abort();
+      searchSequence++;
       $("#onlineSection")?.classList.add("hidden");
       return;
     }
@@ -925,6 +933,10 @@ function setupBackup() {
             ? playlist.tracks
             : []
         }));
+
+        if (!["dark", "light"].includes(state.theme)) {
+          state.theme = "dark";
+        }
 
         saveState();
         renderAll();
