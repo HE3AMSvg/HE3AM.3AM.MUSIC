@@ -1,1183 +1,1463 @@
-
 /* ======================================================
-   HE3AM.3AM.MUSIC
-   Audius + Jamendo via Cloudflare Worker
-   Search, playback, playlists, theme and backup
+   HE3AM MUSIC HUB
+   Audius + Jamendo
+   Search, playback, playlists, theme, backup & restore
    ====================================================== */
 
-const API_PROXY = "https://he3am.ghostrip82.workers.dev";
-const STORAGE_KEY = "pulseMusic";
+"use strict";
+
+/* =========================
+   CONFIG
+   ========================= */
+
 const APP_NAME = "HE3AM";
+const STORAGE_KEY = "pulseMusic";
 
-const AUDIUS_BASES = [
-  "https://api.audius.co/v1",
-  "https://discoveryprovider.audius.co/v1"
-];
+const API_PROXY = "https://he3am.ghostrip82.workers.dev";
 
-let state = {
+const AUDIUS_SEARCH_URL = `${API_PROXY}/api/tracks/search`;
+const JAMENDO_SEARCH_URL = `${API_PROXY}/api/jamendo/tracks`;
+
+const DEFAULT_LIMIT = 15;
+
+/* =========================
+   APP STATE
+   ========================= */
+
+const state = {
+  tracks: [],
   playlists: [],
-  currentPlaylistId: null,
   currentTrack: null,
-  theme: "dark"
+  currentIndex: -1,
+  currentPlaylist: null,
+  searchQuery: "",
+  searchToken: 0,
+  isSearching: false,
+  provider: "all",
+  theme: "dark",
+  volume: 0.8,
+  repeat: false,
+  shuffle: false
 };
 
-let onlineTracks = [];
-let searchTimer = null;
-let searchController = null;
-let searchSequence = 0;
-let streamSequence = 0;
+let audio = null;
+let elements = {};
 
-let currentStreamCandidates = [];
-let currentStreamIndex = 0;
+/* =========================
+   DOM HELPERS
+   ========================= */
 
-const audio = new Audio();
-audio.preload = "metadata";
+function $(selectors, root = document) {
+  const list = Array.isArray(selectors)
+    ? selectors
+    : [selectors];
 
-const $ = selector => document.querySelector(selector);
+  for (const selector of list) {
+    const found = root.querySelector(selector);
+    if (found) return found;
+  }
 
-/* ---------------- Helpers ---------------- */
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  return null;
 }
 
-function createId() {
-  return Date.now().toString(36) +
-    Math.random().toString(36).slice(2, 9);
+function createElement(tag, className, text) {
+  const element = document.createElement(tag);
+
+  if (className) {
+    element.className = className;
+  }
+
+  if (text !== undefined && text !== null) {
+    element.textContent = String(text);
+  }
+
+  return element;
 }
 
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.error("Could not save state:", error);
+function setText(element, value) {
+  if (element) {
+    element.textContent = value ?? "";
   }
 }
 
-function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-
-    const parsed = JSON.parse(saved);
-    state = { ...state, ...parsed };
-
-    if (!Array.isArray(state.playlists)) {
-      state.playlists = [];
-    }
-
-    state.playlists = state.playlists.map(playlist => ({
-      ...playlist,
-      tracks: Array.isArray(playlist.tracks)
-        ? playlist.tracks.map(track => ({
-            ...track,
-            // آهنگ‌های قدیمی که provider ندارند، Audius هستند.
-            provider: track.provider === "jamendo"
-              ? "jamendo"
-              : "audius"
-          }))
-        : []
-    }));
-
-    if (!["dark", "light"].includes(state.theme)) {
-      state.theme = "dark";
-    }
-  } catch (error) {
-    console.error("Could not load saved state:", error);
-  }
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-/* ---------------- Track helpers ---------------- */
+function getString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number") {
+      return String(value);
+    }
+  }
+
+  return "";
+}
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    character => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[character]
+  );
+}
 
 function getProvider(track) {
-  return track?.provider === "jamendo"
-    ? "jamendo"
-    : "audius";
-}
+  const provider = String(
+    track?.provider ||
+    track?.source ||
+    track?.origin ||
+    ""
+  ).toLowerCase();
 
-function getArtwork(track) {
-  const artwork = track?.artwork;
-
-  if (typeof artwork === "string" && artwork) {
-    return artwork;
+  if (provider.includes("jamendo")) {
+    return "jamendo";
   }
 
-  return (
-    artwork?.["1000x1000"] ||
-    artwork?.["480x480"] ||
-    artwork?.["150x150"] ||
-    track?.album_image ||
-    track?.image ||
-    track?.thumbnail ||
-    "https://placehold.co/500x500?text=HE3AM"
-  );
-}
-
-function getArtist(track) {
-  return (
-    track?.user?.name ||
-    track?.user?.handle ||
-    track?.artist_name ||
-    track?.artist ||
-    "Unknown Artist"
-  );
-}
-
-function getTrackTitle(track) {
-  return track?.title || track?.name || "Unknown Track";
-}
-
-function getTrackId(track) {
-  if (!track) return null;
-
-  if (getProvider(track) === "jamendo") {
-    return track.jamendoId || track.id || null;
+  if (provider.includes("audius")) {
+    return "audius";
   }
 
-  return track.audiusId || track.id || null;
-}
-
-function getStreamCandidates(track) {
-  if (!track) return [];
-
-  const provider = getProvider(track);
-
-  // Jamendo آدرس صوتی را مستقیماً برمی‌گرداند.
-  if (provider === "jamendo") {
-    const url = track.streamUrl || track.audio;
-    return url ? [url] : [];
+  if (
+    track?.jamendoId ||
+    track?.audiodownload ||
+    track?.audioDownload ||
+    track?.album?.artist_id
+  ) {
+    return "jamendo";
   }
 
-  const id = getTrackId(track);
-  const candidates = [];
-
-  // ابتدا آدرسی را امتحان کن که قبلاً ذخیره شده است.
-  if (track.streamUrl) {
-    candidates.push(track.streamUrl);
-  }
-
-  if (id) {
-    const params = new URLSearchParams({
-      app_name: APP_NAME
-    });
-
-    const encodedId = encodeURIComponent(id);
-
-    AUDIUS_BASES.forEach(base => {
-      candidates.push(
-        `${base}/tracks/${encodedId}/stream?${params}`
-      );
-    });
-  }
-
-  return [...new Set(candidates)];
+  return "audius";
 }
 
-function streamUrl(track) {
-  return getStreamCandidates(track)[0] || "";
+function uniqueTracks(tracks) {
+  const seen = new Set();
+
+  return tracks.filter(track => {
+    const key = `${getProvider(track)}:${
+      track.id || track.trackId || track.title
+    }`;
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
 }
+
+/* =========================
+   STORAGE
+   ========================= */
+
+function loadSavedData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) return;
+
+    const saved = JSON.parse(raw);
+
+    if (Array.isArray(saved)) {
+      state.playlists = saved;
+      return;
+    }
+
+    state.playlists = safeArray(
+      saved.playlists || saved.userPlaylists
+    );
+
+    state.theme = saved.theme || "dark";
+    state.volume = Number.isFinite(saved.volume)
+      ? saved.volume
+      : 0.8;
+
+    state.repeat = Boolean(saved.repeat);
+    state.shuffle = Boolean(saved.shuffle);
+  } catch (error) {
+    console.warn("Could not load saved data:", error);
+  }
+}
+
+function saveData() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        playlists: state.playlists,
+        theme: state.theme,
+        volume: state.volume,
+        repeat: state.repeat,
+        shuffle: state.shuffle
+      })
+    );
+  } catch (error) {
+    console.error("Could not save data:", error);
+    showMessage("ذخیره اطلاعات انجام نشد.");
+  }
+}
+
+/* =========================
+   HTTP HELPERS
+   ========================= */
+
+async function fetchJSON(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...options.headers
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/* =========================
+   RESPONSE PARSERS
+   ========================= */
+
+function extractAudiusTracks(payload) {
+  const candidates = [
+    payload?.data,
+    payload?.tracks,
+    payload?.results,
+    payload?.data?.data,
+    payload?.data?.tracks,
+    payload?.response?.data,
+    payload?.response?.tracks,
+    payload?.response?.results
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (payload?.data && typeof payload.data === "object") {
+    if (payload.data.id || payload.data.title) {
+      return [payload.data];
+    }
+  }
+
+  if (payload?.id || payload?.title) {
+    return [payload];
+  }
+
+  return [];
+}
+
+function extractJamendoTracks(payload) {
+  const candidates = [
+    payload?.results,
+    payload?.data,
+    payload?.tracks,
+    payload?.response,
+    payload?.results?.tracks,
+    payload?.data?.results,
+    payload?.data?.tracks,
+    payload?.data?.data,
+    payload?.response?.results,
+    payload?.response?.data,
+    payload?.response?.tracks,
+    payload?.tracks?.results
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (payload?.results?.track) {
+    return safeArray(payload.results.track);
+  }
+
+  if (payload?.results?.headers && payload?.results?.results) {
+    return safeArray(payload.results.results);
+  }
+
+  return [];
+}
+
+/* =========================
+   TRACK NORMALIZATION
+   ========================= */
 
 function normalizeAudiusTrack(track) {
+  const id = getString(
+    track?.id,
+    track?.trackId,
+    track?.permalink
+  );
+
+  const artwork = track?.artwork || {};
+
   return {
     ...track,
+    id,
+    audiusId: getString(track?.audiusId, id),
     provider: "audius",
-    audiusId: track?.audiusId || track?.id,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    duration: Number(track?.duration) || 0
+    title: getString(track?.title, track?.name, "Untitled"),
+    artist: getString(
+      track?.artist,
+      track?.user?.name,
+      track?.user?.handle,
+      track?.artist_name,
+      "Unknown artist"
+    ),
+    artwork: getString(
+      typeof artwork === "string" ? artwork : "",
+      artwork?.["480x480"],
+      artwork?.["150x150"],
+      artwork?.["1000x1000"],
+      track?.thumbnail,
+      track?.image
+    ),
+    duration: Number(track?.duration) || 0,
+    streamUrl: getString(
+      track?.streamUrl,
+      track?.stream_url,
+      track?.audio
+    ),
+    permalink: getString(
+      track?.permalink,
+      track?.url
+    )
   };
 }
 
 function normalizeJamendoTrack(track) {
+  const id = getString(
+    track?.id,
+    track?.trackId,
+    track?.jamendoId
+  );
+
+  const artist = track?.artist || {};
+
   return {
     ...track,
+    id,
+    jamendoId: getString(track?.jamendoId, id),
     provider: "jamendo",
-    jamendoId: String(track?.jamendoId || track?.id || ""),
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    streamUrl: track?.streamUrl || track?.audio || "",
-    duration: Number(track?.duration) || 0
+    title: getString(
+      track?.name,
+      track?.title,
+      track?.track_name,
+      "Untitled"
+    ),
+    artist: getString(
+      typeof artist === "string" ? artist : "",
+      artist?.name,
+      track?.artist_name,
+      track?.artistName,
+      "Unknown artist"
+    ),
+    artwork: getString(
+      track?.image,
+      track?.album_image,
+      track?.albumImage,
+      track?.artwork,
+      track?.thumbnail
+    ),
+    duration: Number(
+      track?.duration || track?.duration_seconds
+    ) || 0,
+    streamUrl: getString(
+      track?.streamUrl,
+      track?.stream,
+      track?.audio,
+      track?.audio_url,
+      track?.audiodownload,
+      track?.audioDownload
+    ),
+    permalink: getString(
+      track?.shareurl,
+      track?.shorturl,
+      track?.url,
+      track?.permalink
+    )
   };
 }
 
-/* ---------------- Playlists ---------------- */
+/* =========================
+   AUDIO STREAMS
+   ========================= */
 
-function getCurrentPlaylist() {
-  return state.playlists.find(
-    playlist => playlist.id === state.currentPlaylistId
+function getStreamCandidates(track) {
+  const provider = getProvider(track);
+  const candidates = [];
+
+  if (track?.streamUrl) {
+    candidates.push(track.streamUrl);
+  }
+
+  if (track?.audio) {
+    candidates.push(track.audio);
+  }
+
+  if (provider === "audius") {
+    const id = getString(
+      track?.audiusId,
+      track?.id
+    );
+
+    if (id) {
+      candidates.push(
+        `${API_PROXY}/api/tracks/${encodeURIComponent(id)}/stream`
+      );
+
+      candidates.push(
+        `https://api.audius.co/v1/tracks/${encodeURIComponent(id)}/stream?app_name=${encodeURIComponent(APP_NAME)}`
+      );
+    }
+  }
+
+  if (provider === "jamendo") {
+    if (track?.audiodownload) {
+      candidates.push(track.audiodownload);
+    }
+
+    if (track?.audioDownload) {
+      candidates.push(track.audioDownload);
+    }
+  }
+
+  return [...new Set(
+    candidates.filter(url =>
+      typeof url === "string" &&
+      /^https?:\/\//i.test(url)
+    )
+  )];
+}
+
+async function playTrack(track, index = -1) {
+  if (!track) return;
+
+  const candidates = getStreamCandidates(track);
+
+  if (!candidates.length) {
+    showMessage(
+      "آدرس پخش برای این آهنگ موجود نیست. آهنگ دیگری را امتحان کن."
+    );
+    return;
+  }
+
+  state.currentTrack = track;
+  state.currentIndex = index;
+
+  updatePlayerUI();
+
+  let lastError = null;
+
+  for (const url of candidates) {
+    try {
+      audio.pause();
+      audio.src = url;
+      audio.load();
+
+      await audio.play();
+
+      track.streamUrl = url;
+      saveData();
+
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn("Stream failed:", url, error);
+    }
+  }
+
+  showMessage(
+    "این آهنگ پخش نشد. ممکن است لینک صوتی آن در دسترس نباشد."
+  );
+
+  console.warn("All stream candidates failed:", lastError);
+}
+
+/* Compatibility with older code */
+function playAudiusTrack(track, index = -1) {
+  return playTrack(
+    normalizeAudiusTrack(track),
+    index
   );
 }
 
+/* =========================
+   SEARCH: AUDIUS
+   ========================= */
+
+async function searchAudius(query) {
+  const url = new URL(AUDIUS_SEARCH_URL);
+
+  url.searchParams.set("query", query);
+  url.searchParams.set("q", query);
+  url.searchParams.set("limit", String(DEFAULT_LIMIT));
+
+  const payload = await fetchJSON(url.toString());
+
+  return extractAudiusTracks(payload)
+    .map(normalizeAudiusTrack)
+    .filter(track => track.id || track.title);
+}
+
+/* =========================
+   SEARCH: JAMENDO
+   ========================= */
+
+async function jamendoFetch(query) {
+  const url = new URL(JAMENDO_SEARCH_URL);
+
+  url.searchParams.set("query", query);
+  url.searchParams.set("search", query);
+  url.searchParams.set("q", query);
+  url.searchParams.set("limit", String(DEFAULT_LIMIT));
+  url.searchParams.set("offset", "0");
+
+  return fetchJSON(url.toString());
+}
+
+async function searchJamendo(query) {
+  const payload = await jamendoFetch(query);
+
+  console.log("Jamendo response:", payload);
+
+  const rawTracks = extractJamendoTracks(payload);
+
+  console.log("Jamendo tracks found:", rawTracks.length);
+
+  return rawTracks
+    .map(normalizeJamendoTrack)
+    .filter(track => track.id || track.title);
+}
+
+/* =========================
+   SEARCH: BOTH SERVICES
+   ========================= */
+
+async function searchTracks(query) {
+  const cleanedQuery = String(query || "").trim();
+
+  if (!cleanedQuery) {
+    showMessage("نام آهنگ یا خواننده را وارد کن.");
+    return;
+  }
+
+  const token = ++state.searchToken;
+
+  state.searchQuery = cleanedQuery;
+  state.isSearching = true;
+
+  renderLoading();
+
+  const [audiusResult, jamendoResult] =
+    await Promise.allSettled([
+      searchAudius(cleanedQuery),
+      searchJamendo(cleanedQuery)
+    ]);
+
+  // Ignore an older search if the user searched again.
+  if (token !== state.searchToken) return;
+
+  const audiusTracks =
+    audiusResult.status === "fulfilled"
+      ? audiusResult.value
+      : [];
+
+  const jamendoTracks =
+    jamendoResult.status === "fulfilled"
+      ? jamendoResult.value
+      : [];
+
+  if (audiusResult.status === "rejected") {
+    console.error("Audius search failed:", audiusResult.reason);
+  }
+
+  if (jamendoResult.status === "rejected") {
+    console.error("Jamendo search failed:", jamendoResult.reason);
+  }
+
+  // Keep results from both services, even when one service fails.
+  state.tracks = uniqueTracks([
+    ...audiusTracks,
+    ...jamendoTracks
+  ]);
+
+  state.isSearching = false;
+
+  renderTracks();
+
+  setText(
+    elements.searchStatus,
+    `Audius: ${audiusTracks.length} | Jamendo: ${jamendoTracks.length}`
+  );
+
+  if (!state.tracks.length) {
+    showMessage(
+      "نتیجه‌ای پیدا نشد. اتصال Worker و پاسخ API را بررسی کن."
+    );
+  }
+}
+
+/* =========================
+   UI ELEMENT DISCOVERY
+   ========================= */
+
+function discoverElements() {
+  elements.searchInput = $([
+    "#searchInput",
+    "#search-input",
+    "#search",
+    "#query",
+    'input[type="search"]',
+    'input[placeholder*="Search" i]',
+    'input[placeholder*="جستجو"]'
+  ]);
+
+  elements.searchButton = $([
+    "#searchBtn",
+    "#searchButton",
+    "#search-button",
+    "#search-submit",
+    '[data-action="search"]'
+  ]);
+
+  elements.results = $([
+    "#trackList",
+    "#tracksList",
+    "#searchResults",
+    "#search-results",
+    "#results",
+    "#tracks",
+    ".track-list",
+    ".search-results"
+  ]);
+
+  elements.searchStatus = $([
+    "#searchStatus",
+    "#search-status",
+    "#resultsCount"
+  ]);
+
+  elements.playlists = $([
+    "#playlists",
+    "#playlistList",
+    "#playlist-list",
+    "#playlistContainer"
+  ]);
+
+  elements.playerTitle = $([
+    "#playerTitle",
+    "#nowPlayingTitle",
+    "#currentTrackTitle"
+  ]);
+
+  elements.playerArtist = $([
+    "#playerArtist",
+    "#nowPlayingArtist",
+    "#currentTrackArtist"
+  ]);
+
+  elements.playerArtwork = $([
+    "#playerArtwork",
+    "#nowPlayingArtwork",
+    "#currentTrackArtwork"
+  ]);
+
+  elements.audio = $([
+    "#audioPlayer",
+    "#audio",
+    "audio#player",
+    "audio"
+  ]);
+
+  elements.themeButton = $([
+    "#themeToggle",
+    "#theme-toggle",
+    '[data-action="theme"]'
+  ]);
+
+  elements.backupButton = $([
+    "#exportBackup",
+    "#backupExport",
+    "#export-backup",
+    '[data-action="export"]'
+  ]);
+
+  elements.restoreInput = $([
+    "#importBackup",
+    "#backupImport",
+    "#restoreBackup",
+    'input[type="file"][accept*="json"]'
+  ]);
+
+  elements.providerFilter = $([
+    "#providerFilter",
+    "#provider-filter"
+  ]);
+}
+
+/* =========================
+   CREATE MISSING CONTAINERS
+   ========================= */
+
+function ensureResultsContainer() {
+  if (elements.results) return;
+
+  const main = $([
+    "main",
+    "#app",
+    ".app",
+    ".container",
+    "body"
+  ]);
+
+  if (!main) return;
+
+  elements.results = createElement(
+    "div",
+    "he3am-results"
+  );
+
+  elements.results.id = "he3am-results";
+
+  main.appendChild(elements.results);
+}
+
+function ensureStatusContainer() {
+  if (elements.searchStatus) return;
+
+  if (!elements.results?.parentElement) return;
+
+  elements.searchStatus = createElement(
+    "p",
+    "he3am-search-status"
+  );
+
+  elements.searchStatus.id = "he3am-search-status";
+
+  elements.results.parentElement.insertBefore(
+    elements.searchStatus,
+    elements.results
+  );
+}
+
+/* =========================
+   RENDERING
+   ========================= */
+
+function renderLoading() {
+  if (elements.results) {
+    elements.results.replaceChildren(
+      createElement("p", "loading", "در حال جستجو در Audius و Jamendo…")
+    );
+  }
+
+  setText(elements.searchStatus, "در حال دریافت نتایج…");
+}
+
+function renderTracks() {
+  if (!elements.results) return;
+
+  elements.results.replaceChildren();
+
+  const filteredTracks = state.tracks.filter(track => {
+    return (
+      state.provider === "all" ||
+      getProvider(track) === state.provider
+    );
+  });
+
+  if (!filteredTracks.length) {
+    elements.results.appendChild(
+      createElement("p", "empty-results", "آهنگی برای نمایش وجود ندارد.")
+    );
+
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  filteredTracks.forEach(track => {
+    const originalIndex = state.tracks.indexOf(track);
+
+    const card = createElement("article", "track-card");
+    card.dataset.provider = getProvider(track);
+
+    const image = createElement("img", "track-artwork");
+    image.alt = `${track.title} artwork`;
+    image.loading = "lazy";
+    image.src = track.artwork || "";
+    image.onerror = () => {
+      image.style.visibility = "hidden";
+    };
+
+    const info = createElement("div", "track-info");
+
+    const title = createElement(
+      "div",
+      "track-title",
+      track.title
+    );
+
+    const artist = createElement(
+      "div",
+      "track-artist",
+      track.artist
+    );
+
+    const provider = createElement(
+      "span",
+      `track-provider ${getProvider(track)}`,
+      getProvider(track) === "jamendo"
+        ? "Jamendo"
+        : "Audius"
+    );
+
+    const actions = createElement("div", "track-actions");
+
+    const playButton = createElement(
+      "button",
+      "track-play",
+      "▶ پخش"
+    );
+
+    playButton.type = "button";
+
+    playButton.addEventListener("click", () => {
+      playTrack(track, originalIndex);
+    });
+
+    const addButton = createElement(
+      "button",
+      "track-add",
+      "+ پلی‌لیست"
+    );
+
+    addButton.type = "button";
+
+    addButton.addEventListener("click", () => {
+      addTrackToPlaylist(track);
+    });
+
+    info.append(title, artist, provider);
+    actions.append(playButton, addButton);
+    card.append(image, info, actions);
+    fragment.appendChild(card);
+  });
+
+  elements.results.appendChild(fragment);
+}
+
+/* =========================
+   PLAYER
+   ========================= */
+
+function updatePlayerUI() {
+  const track = state.currentTrack;
+
+  if (!track) return;
+
+  setText(elements.playerTitle, track.title);
+  setText(elements.playerArtist, track.artist);
+
+  if (elements.playerArtwork && track.artwork) {
+    elements.playerArtwork.src = track.artwork;
+  }
+
+  document.title = `${track.title} — ${APP_NAME}`;
+}
+
+function playNext() {
+  if (!state.tracks.length) return;
+
+  let nextIndex;
+
+  if (state.shuffle) {
+    nextIndex = Math.floor(Math.random() * state.tracks.length);
+  } else {
+    nextIndex = state.currentIndex + 1;
+
+    if (nextIndex >= state.tracks.length) {
+      if (state.repeat) {
+        nextIndex = 0;
+      } else {
+        return;
+      }
+    }
+  }
+
+  playTrack(state.tracks[nextIndex], nextIndex);
+}
+
+function playPrevious() {
+  if (!state.tracks.length) return;
+
+  let previousIndex = state.currentIndex - 1;
+
+  if (previousIndex < 0) {
+    previousIndex = state.tracks.length - 1;
+  }
+
+  playTrack(state.tracks[previousIndex], previousIndex);
+}
+
+function setupPlayer() {
+  audio = elements.audio || createElement("audio");
+
+  audio.id = audio.id || "he3am-audio";
+  audio.preload = "metadata";
+  audio.volume = state.volume;
+
+  if (!audio.isConnected) {
+    document.body.appendChild(audio);
+  }
+
+  audio.addEventListener("ended", () => {
+    if (state.repeat && state.currentTrack) {
+      audio.currentTime = 0;
+      audio.play().catch(console.warn);
+    } else {
+      playNext();
+    }
+  });
+
+  audio.addEventListener("error", () => {
+    console.warn("Audio playback error:", audio.error);
+  });
+
+  const nextButton = $([
+    "#nextTrack",
+    "#nextBtn",
+    "#next",
+    '[data-action="next"]'
+  ]);
+
+  const previousButton = $([
+    "#previousTrack",
+    "#prevBtn",
+    "#previous",
+    '[data-action="previous"]'
+  ]);
+
+  const volumeControl = $([
+    "#volume",
+    "#volumeSlider",
+    'input[type="range"][data-volume]'
+  ]);
+
+  const shuffleButton = $([
+    "#shuffle",
+    "#shuffleBtn",
+    '[data-action="shuffle"]'
+  ]);
+
+  const repeatButton = $([
+    "#repeat",
+    "#repeatBtn",
+    '[data-action="repeat"]'
+  ]);
+
+  nextButton?.addEventListener("click", playNext);
+  previousButton?.addEventListener("click", playPrevious);
+
+  volumeControl?.addEventListener("input", () => {
+    state.volume = Number(volumeControl.value);
+    audio.volume = state.volume;
+    saveData();
+  });
+
+  shuffleButton?.addEventListener("click", () => {
+    state.shuffle = !state.shuffle;
+    shuffleButton.setAttribute(
+      "aria-pressed",
+      String(state.shuffle)
+    );
+    saveData();
+  });
+
+  repeatButton?.addEventListener("click", () => {
+    state.repeat = !state.repeat;
+    audio.loop = state.repeat;
+    repeatButton.setAttribute(
+      "aria-pressed",
+      String(state.repeat)
+    );
+    saveData();
+  });
+}
+
+/* =========================
+   PLAYLISTS
+   ========================= */
+
 function createPlaylist(name) {
   const cleanName = String(name || "").trim();
-  if (!cleanName) return;
+
+  if (!cleanName) {
+    showMessage("نام پلی‌لیست را وارد کن.");
+    return null;
+  }
 
   const playlist = {
-    id: createId(),
+    id: crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`,
     name: cleanName,
-    tracks: []
+    tracks: [],
+    createdAt: new Date().toISOString()
   };
 
   state.playlists.push(playlist);
-  state.currentPlaylistId = playlist.id;
 
-  saveState();
-  renderAll();
+  saveData();
+  renderPlaylists();
+
+  return playlist;
 }
 
-function deletePlaylist(id) {
-  const playlist = state.playlists.find(item => item.id === id);
-  if (!playlist) return;
-
-  if (!confirm(`Delete playlist "${playlist.name}"?`)) {
-    return;
-  }
-
-  state.playlists = state.playlists.filter(item => item.id !== id);
-
-  if (state.currentPlaylistId === id) {
-    state.currentPlaylistId = state.playlists[0]?.id || null;
-  }
-
-  saveState();
-  renderAll();
-}
-
-function addTrackToPlaylist(track, playlistId) {
-  const playlist = state.playlists.find(item => item.id === playlistId);
-  if (!playlist || !track) return;
-
-  const normalized = getProvider(track) === "jamendo"
-    ? normalizeJamendoTrack(track)
-    : normalizeAudiusTrack(track);
-
-  const trackId = getTrackId(normalized);
-  const provider = getProvider(normalized);
-
-  const exists = playlist.tracks.some(item => {
-    const sameProvider = getProvider(item) === provider;
-    const sameId = trackId &&
-      getTrackId(item) &&
-      String(getTrackId(item)) === String(trackId);
-
-    if (sameProvider && sameId) return true;
-
-    return sameProvider &&
-      item.title === normalized.title &&
-      item.artist === normalized.artist;
-  });
-
-  if (exists) {
-    alert("This song is already in the playlist.");
-    return;
-  }
-
-  playlist.tracks.push({
-    id: createId(),
-    provider,
-    audiusId: provider === "audius" ? trackId : null,
-    jamendoId: provider === "jamendo" ? String(trackId || "") : null,
-    title: getTrackTitle(normalized),
-    artist: getArtist(normalized),
-    artwork: getArtwork(normalized),
-    streamUrl: streamUrl(normalized),
-    duration: Number(normalized.duration) || 0
-  });
-
-  saveState();
-  renderAll();
-}
-
-/* ---------------- Audius API via Worker ---------------- */
-
-async function audiusFetch(path, options = {}) {
-  const sourceUrl = new URL(path, "https://audius.local");
-
-  if (sourceUrl.pathname !== "/tracks/search") {
-    throw new Error("Unsupported Audius API endpoint.");
-  }
-
-  const requestUrl = new URL("/api/tracks/search", API_PROXY);
-
-  sourceUrl.searchParams.forEach((value, key) => {
-    requestUrl.searchParams.set(key, value);
-  });
-
-  const response = await fetch(requestUrl.toString(), {
-    ...options,
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...options.headers
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Audius proxy HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/* ---------------- Jamendo API via Worker ---------------- */
-
-async function jamendoFetch(query, options = {}) {
-  const requestUrl = new URL("/api/jamendo/tracks", API_PROXY);
-
-  requestUrl.searchParams.set("query", query);
-  requestUrl.searchParams.set("limit", "15");
-  requestUrl.searchParams.set("offset", "0");
-
-  const response = await fetch(requestUrl.toString(), {
-    ...options,
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...options.headers
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Jamendo proxy HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/* ---------------- Combined Search ---------------- */
-
-async function searchAudius(query) {
-  query = String(query || "").trim();
-  if (!query) return;
-
-  const section = $("#onlineSection");
-  const status = $("#onlineStatus");
-  const results = $("#onlineResults");
-
-  if (!section || !status || !results) return;
-
-  if (searchController) {
-    searchController.abort();
-  }
-
-  const controller = new AbortController();
-  searchController = controller;
-
-  const requestId = ++searchSequence;
-
-  section.classList.remove("hidden");
-  status.textContent = "Searching Audius + Jamendo...";
-
-  results.innerHTML = `
-    <div class="empty-state">
-      <h3>Searching...</h3>
-      <p>Looking for "${escapeHtml(query)}" on Audius and Jamendo.</p>
-    </div>
-  `;
-
-  const params = new URLSearchParams({
-    query,
-    limit: "15",
-    offset: "0",
-    sort_method: "relevant"
-  });
-
-  const [audiusResult, jamendoResult] = await Promise.allSettled([
-    audiusFetch(`/tracks/search?${params.toString()}`, {
-      signal: controller.signal
-    }),
-    jamendoFetch(query, {
-      signal: controller.signal
-    })
-  ]);
-
-  if (requestId !== searchSequence) return;
-
-  if (
-    audiusResult.status === "rejected" &&
-    audiusResult.reason?.name === "AbortError"
-  ) {
-    return;
-  }
-
-  if (
-    jamendoResult.status === "rejected" &&
-    jamendoResult.reason?.name === "AbortError"
-  ) {
-    return;
-  }
-
-  const audiusOK = audiusResult.status === "fulfilled";
-  const jamendoOK = jamendoResult.status === "fulfilled";
-
-  const audiusData = audiusOK
-    ? audiusResult.value?.data
-    : [];
-
-  const jamendoJson = jamendoOK
-    ? jamendoResult.value
-    : {};
-
-  // بعضی Workerها خروجی Jamendo را در results و بعضی در data می‌گذارند.
-  const jamendoData = Array.isArray(jamendoJson?.results)
-    ? jamendoJson.results
-    : Array.isArray(jamendoJson?.data)
-      ? jamendoJson.data
-      : [];
-
-  const audiusTracks = Array.isArray(audiusData)
-    ? audiusData.map(normalizeAudiusTrack)
-    : [];
-
-  const jamendoTracks = Array.isArray(jamendoData)
-    ? jamendoData
-        .filter(track => track?.audio || track?.streamUrl)
-        .map(normalizeJamendoTrack)
-    : [];
-
-  onlineTracks = [...audiusTracks, ...jamendoTracks];
-
-  if (audiusOK && jamendoOK) {
-    status.textContent =
-      `${onlineTracks.length} result(s) found · Audius + Jamendo`;
-  } else if (audiusOK) {
-    status.textContent =
-      `Audius available · Jamendo unavailable · ${audiusTracks.length} result(s)`;
-  } else if (jamendoOK) {
-    status.textContent =
-      `Jamendo available · Audius unavailable · ${jamendoTracks.length} result(s)`;
-  } else {
-    status.textContent = "Both music services are unavailable.";
-  }
-
-  if (!audiusOK) {
-    console.error("Audius search error:", audiusResult.reason);
-  }
-
-  if (!jamendoOK) {
-    console.error("Jamendo search error:", jamendoResult.reason);
-  }
-
-  renderOnline();
-
-  if (!audiusOK && !jamendoOK) {
-    results.innerHTML = `
-      <div class="empty-state">
-        <h3>Music services unavailable</h3>
-        <p>Check your Worker configuration and try again.</p>
-      </div>
-    `;
-  }
-}
-
-/* ---------------- Search Results ---------------- */
-
-function renderOnline() {
-  const results = $("#onlineResults");
-  if (!results) return;
-
-  if (!onlineTracks.length) {
-    results.innerHTML = `
-      <div class="empty-state">
-        <h3>No songs found</h3>
-        <p>Try another song or artist.</p>
-      </div>
-    `;
-    return;
-  }
-
-  results.innerHTML = onlineTracks.map((track, index) => {
-    const provider = getProvider(track);
-
-    return `
-      <div class="track-card">
-        <img
-          class="track-cover"
-          src="${escapeHtml(getArtwork(track))}"
-          alt="${escapeHtml(getTrackTitle(track))}"
-          loading="lazy"
-          onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
-        >
-
-        <div class="track-info">
-          <div class="track-title">
-            ${escapeHtml(getTrackTitle(track))}
-          </div>
-
-          <div class="track-artist">
-            ${escapeHtml(getArtist(track))}
-          </div>
-
-          <div class="track-provider">
-            ${provider === "jamendo" ? "Jamendo" : "Audius"}
-          </div>
-        </div>
-
-        <div class="track-actions">
-          <button
-            class="play-online-btn"
-            data-index="${index}"
-            type="button"
-            title="Play"
-          >▶</button>
-
-          <button
-            class="add-online-btn"
-            data-index="${index}"
-            type="button"
-            title="Add to playlist"
-          >+</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  results.querySelectorAll(".play-online-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      playOnlineTrack(onlineTracks[Number(button.dataset.index)]);
-    });
-  });
-
-  results.querySelectorAll(".add-online-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      addOnlineTrack(onlineTracks[Number(button.dataset.index)]);
-    });
-  });
-}
-
-function addOnlineTrack(track) {
-  if (!track) return;
-
+function addTrackToPlaylist(track) {
   if (!state.playlists.length) {
-    alert("Create a playlist first.");
+    const name = prompt("نام پلی‌لیست جدید:");
+
+    if (!name) return;
+
+    const playlist = createPlaylist(name);
+
+    if (!playlist) return;
+
+    playlist.tracks.push({ ...track });
+    saveData();
+    renderPlaylists();
+
+    showMessage("آهنگ به پلی‌لیست اضافه شد.");
     return;
   }
 
-  const playlist = getCurrentPlaylist() || state.playlists[0];
-  addTrackToPlaylist(track, playlist.id);
-}
+  const names = state.playlists
+    .map((playlist, index) => `${index + 1}. ${playlist.name}`)
+    .join("\n");
 
-/* ---------------- Playback ---------------- */
+  const choice = prompt(
+    `شماره پلی‌لیست را وارد کن:\n${names}\n\nبرای ساخت پلی‌لیست جدید عدد 0 را وارد کن.`
+  );
 
-function setCurrentTrack(track) {
-  const provider = getProvider(track);
+  if (choice === null) return;
 
-  state.currentTrack = {
-    ...track,
-    provider,
-    audiusId: provider === "audius"
-      ? getTrackId(track)
-      : track.audiusId || null,
-    jamendoId: provider === "jamendo"
-      ? String(getTrackId(track) || "")
-      : track.jamendoId || null,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    streamUrl: track.streamUrl || streamUrl(track)
-  };
+  if (choice.trim() === "0") {
+    const name = prompt("نام پلی‌لیست جدید:");
 
-  saveState();
-  updatePlayer();
-}
+    if (!name) return;
 
-function showPlaybackError(error) {
-  console.error("Playback error:", error);
+    const playlist = createPlaylist(name);
 
-  const status = $("#onlineStatus");
+    if (!playlist) return;
 
-  if (status) {
-    status.textContent =
-      "Unable to play this track. Try another song.";
-  }
-}
+    playlist.tracks.push({ ...track });
+  } else {
+    const index = Number(choice) - 1;
+    const playlist = state.playlists[index];
 
-function startStreamCandidate(index, requestId) {
-  if (requestId !== streamSequence) return;
+    if (!playlist) {
+      showMessage("شماره پلی‌لیست معتبر نیست.");
+      return;
+    }
 
-  if (index >= currentStreamCandidates.length) {
-    updatePlayButton();
+    if (!Array.isArray(playlist.tracks)) {
+      playlist.tracks = [];
+    }
 
-    showPlaybackError(
-      new Error("All available stream URLs failed.")
+    const exists = playlist.tracks.some(item =>
+      getProvider(item) === getProvider(track) &&
+      String(item.id) === String(track.id)
     );
 
-    alert(
-      "این آهنگ پخش نشد. ممکن است ترک محدود یا موقتاً غیرقابل‌دسترس باشد. یک آهنگ دیگر را امتحان کن."
-    );
+    if (exists) {
+      showMessage("این آهنگ از قبل در پلی‌لیست وجود دارد.");
+      return;
+    }
 
-    return;
+    playlist.tracks.push({ ...track });
   }
 
-  currentStreamIndex = index;
+  saveData();
+  renderPlaylists();
 
-  const url = currentStreamCandidates[index];
-
-  audio.pause();
-  audio.removeAttribute("src");
-  audio.load();
-
-  audio.src = url;
-  audio.load();
-
-  const playPromise = audio.play();
-
-  if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.catch(error => {
-      if (requestId !== streamSequence) return;
-
-      console.warn(`Stream attempt ${index + 1} failed:`, error);
-
-      if (error.name === "NotAllowedError") {
-        updatePlayButton();
-        return;
-      }
-
-      startStreamCandidate(index + 1, requestId);
-    });
-  }
+  showMessage("آهنگ به پلی‌لیست اضافه شد.");
 }
-
-function playOnlineTrack(track) {
-  if (!track) return;
-
-  const candidates = getStreamCandidates(track);
-
-  if (!candidates.length) {
-    alert("This track does not have a valid stream URL or track ID.");
-    return;
-  }
-
-  const requestId = ++streamSequence;
-
-  currentStreamCandidates = candidates;
-  currentStreamIndex = 0;
-
-  setCurrentTrack({
-    ...track,
-    streamUrl: candidates[0]
-  });
-
-  startStreamCandidate(0, requestId);
-}
-
-// سازگاری با کدهای قبلی که این تابع را صدا می‌زنند.
-function playAudiusTrack(track) {
-  playOnlineTrack({
-    ...track,
-    provider: "audius"
-  });
-}
-
-function playLocalTrack(track) {
-  if (!track) return;
-
-  const candidates = getStreamCandidates(track);
-
-  if (!candidates.length) {
-    alert("This track does not have a playable stream.");
-    return;
-  }
-
-  const requestId = ++streamSequence;
-
-  currentStreamCandidates = candidates;
-  currentStreamIndex = 0;
-
-  setCurrentTrack({
-    ...track,
-    streamUrl: candidates[0]
-  });
-
-  startStreamCandidate(0, requestId);
-}
-
-/* ---------------- Player UI ---------------- */
-
-function updatePlayer() {
-  const track = state.currentTrack;
-  if (!track) return;
-
-  const title = $("#playerTitle");
-  const artist = $("#playerArtist");
-  const cover = $("#playerCover");
-
-  if (title) title.textContent = track.title || "Unknown Track";
-  if (artist) artist.textContent = track.artist || "Unknown Artist";
-
-  if (cover) {
-    cover.onerror = () => {
-      cover.onerror = null;
-      cover.src = "https://placehold.co/500x500?text=HE3AM";
-    };
-
-    cover.src = track.artwork || getArtwork(track);
-  }
-
-  updatePlayButton();
-  updateProgress();
-}
-
-function updatePlayButton() {
-  const button = $("#playPauseBtn");
-  if (button) button.textContent = audio.paused ? "▶" : "❚❚";
-}
-
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, "0");
-
-  return `${minutes}:${remainder}`;
-}
-
-function updateProgress() {
-  const progress = $("#progressBar");
-  const current = $("#currentTime");
-  const duration = $("#duration");
-
-  if (progress) {
-    progress.value =
-      Number.isFinite(audio.duration) && audio.duration > 0
-        ? (audio.currentTime / audio.duration) * 100
-        : 0;
-  }
-
-  if (current) {
-    current.textContent = formatTime(audio.currentTime);
-  }
-
-  if (duration) {
-    duration.textContent = formatTime(audio.duration);
-  }
-}
-
-/* ---------------- Playlist Rendering ---------------- */
 
 function renderPlaylists() {
-  const container = $("#playlistGrid");
-  if (!container) return;
+  if (!elements.playlists) return;
 
-  if (!state.playlists.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>No playlists yet</h3>
-        <p>Create your first playlist.</p>
-      </div>
-    `;
-    return;
-  }
+  elements.playlists.replaceChildren();
 
-  container.innerHTML = state.playlists.map(playlist => `
-    <div class="playlist-card" data-playlist-id="${escapeHtml(playlist.id)}">
-      <div>
-        <h3>${escapeHtml(playlist.name)}</h3>
-        <p>${playlist.tracks.length} track(s)</p>
-      </div>
+  state.playlists.forEach(playlist => {
+    if (!Array.isArray(playlist.tracks)) {
+      playlist.tracks = [];
+    }
 
-      <div class="playlist-card-actions">
-        <button
-          class="open-playlist-btn"
-          data-id="${escapeHtml(playlist.id)}"
-          type="button"
-        >Open</button>
+    const section = createElement("section", "playlist-card");
 
-        <button
-          class="delete-playlist-btn"
-          data-id="${escapeHtml(playlist.id)}"
-          type="button"
-        >Delete</button>
-      </div>
-    </div>
-  `).join("");
-
-  container.querySelectorAll(".open-playlist-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      state.currentPlaylistId = button.dataset.id;
-      saveState();
-      renderAll();
-    });
-  });
-
-  container.querySelectorAll(".delete-playlist-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      deletePlaylist(button.dataset.id);
-    });
-  });
-}
-
-function renderCurrentPlaylist() {
-  const container = $("#currentPlaylist");
-  if (!container) return;
-
-  const playlist = getCurrentPlaylist();
-
-  if (!playlist) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>No playlist selected</h3>
-      </div>
-    `;
-    return;
-  }
-
-  if (!playlist.tracks.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>${escapeHtml(playlist.name)}</h3>
-        <p>This playlist is empty.</p>
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="playlist-header">
-      <h2>${escapeHtml(playlist.name)}</h2>
-      <span>${playlist.tracks.length} tracks</span>
-    </div>
-
-    <div class="playlist-tracks">
-      ${playlist.tracks.map((track, index) => `
-        <div class="track-card">
-          <img
-            class="track-cover"
-            src="${escapeHtml(track.artwork || "https://placehold.co/500x500?text=HE3AM")}"
-            alt="${escapeHtml(track.title)}"
-            loading="lazy"
-            onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
-          >
-
-          <div class="track-info">
-            <div class="track-title">${escapeHtml(track.title)}</div>
-            <div class="track-artist">${escapeHtml(track.artist)}</div>
-            <div class="track-provider">
-              ${getProvider(track) === "jamendo" ? "Jamendo" : "Audius"}
-            </div>
-          </div>
-
-          <button
-            class="play-local-btn"
-            data-index="${index}"
-            type="button"
-            title="Play"
-          >▶</button>
-        </div>
-      `).join("")}
-    </div>
-  `;
-
-  container.querySelectorAll(".play-local-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      playLocalTrack(playlist.tracks[Number(button.dataset.index)]);
-    });
-  });
-}
-
-/* ---------------- Statistics ---------------- */
-
-function updateStats() {
-  const playlistCount = $("#playlistCount");
-  const trackCount = $("#trackCount");
-
-  if (playlistCount) {
-    playlistCount.textContent = state.playlists.length;
-  }
-
-  if (trackCount) {
-    trackCount.textContent = state.playlists.reduce(
-      (total, playlist) => total + playlist.tracks.length,
-      0
+    const heading = createElement(
+      "h3",
+      "playlist-name",
+      playlist.name
     );
-  }
+
+    const count = createElement(
+      "span",
+      "playlist-count",
+      `${playlist.tracks.length} آهنگ`
+    );
+
+    const list = createElement("div", "playlist-tracks");
+
+    playlist.tracks.forEach((track, index) => {
+      const item = createElement("div", "playlist-track");
+
+      const label = createElement(
+        "span",
+        "playlist-track-label",
+        `${track.title || "Untitled"} — ${track.artist || "Unknown artist"}`
+      );
+
+      const playButton = createElement("button", "", "▶");
+
+      playButton.type = "button";
+
+      playButton.addEventListener("click", () => {
+        state.currentPlaylist = playlist.id;
+        playTrack(track, index);
+      });
+
+      const removeButton = createElement("button", "", "حذف");
+
+      removeButton.type = "button";
+
+      removeButton.addEventListener("click", () => {
+        playlist.tracks.splice(index, 1);
+        saveData();
+        renderPlaylists();
+      });
+
+      item.append(label, playButton, removeButton);
+      list.appendChild(item);
+    });
+
+    const deleteButton = createElement(
+      "button",
+      "delete-playlist",
+      "حذف پلی‌لیست"
+    );
+
+    deleteButton.type = "button";
+
+    deleteButton.addEventListener("click", () => {
+      const confirmed = confirm(
+        `پلی‌لیست «${playlist.name}» حذف شود؟`
+      );
+
+      if (!confirmed) return;
+
+      state.playlists = state.playlists.filter(
+        item => item.id !== playlist.id
+      );
+
+      saveData();
+      renderPlaylists();
+    });
+
+    section.append(heading, count, list, deleteButton);
+    elements.playlists.appendChild(section);
+  });
 }
 
-/* ---------------- Search Controls ---------------- */
-
-function setupSearch() {
-  const input = $("#searchInput");
-  const button = $("#searchButton");
-  if (!input) return;
-
-  async function performSearch() {
-    clearTimeout(searchTimer);
-
-    const query = input.value.trim();
-
-    if (!query) {
-      $("#onlineSection")?.classList.add("hidden");
-      return;
-    }
-
-    await searchAudius(query);
-  }
-
-  input.addEventListener("input", () => {
-    clearTimeout(searchTimer);
-
-    const query = input.value.trim();
-
-    if (!query) {
-      if (searchController) searchController.abort();
-      searchSequence++;
-      onlineTracks = [];
-      $("#onlineSection")?.classList.add("hidden");
-      return;
-    }
-
-    searchTimer = setTimeout(() => searchAudius(query), 500);
-  });
-
-  input.addEventListener("keydown", event => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      performSearch();
-    }
-  });
-
-  button?.addEventListener("click", performSearch);
-}
-
-/* ---------------- Theme ---------------- */
+/* =========================
+   THEME
+   ========================= */
 
 function applyTheme() {
-  document.body.dataset.theme = state.theme;
   document.documentElement.dataset.theme = state.theme;
-}
+  document.body.dataset.theme = state.theme;
 
-function setupTheme() {
-  const button = $("#themeToggle");
+  document.documentElement.classList.toggle(
+    "light-theme",
+    state.theme === "light"
+  );
 
-  applyTheme();
+  document.documentElement.classList.toggle(
+    "dark-theme",
+    state.theme === "dark"
+  );
 
-  button?.addEventListener("click", () => {
-    state.theme = state.theme === "dark" ? "light" : "dark";
-    saveState();
-    applyTheme();
-  });
-}
-
-/* ---------------- Playlist Dialog ---------------- */
-
-function setupPlaylistDialog() {
-  const openButton = $("#newPlaylistBtn");
-  const dialog = $("#playlistDialog");
-  const form = $("#playlistForm");
-  const cancel = $("#cancelPlaylistBtn");
-
-  if (!openButton || !dialog || !form) return;
-
-  openButton.addEventListener("click", () => {
-    if (typeof dialog.showModal === "function") {
-      dialog.showModal();
-    } else {
-      dialog.classList.remove("hidden");
-    }
-  });
-
-  cancel?.addEventListener("click", () => {
-    if (typeof dialog.close === "function") {
-      dialog.close();
-    } else {
-      dialog.classList.add("hidden");
-    }
-  });
-
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-
-    const input = $("#playlistName");
-    if (!input) return;
-
-    createPlaylist(input.value);
-    input.value = "";
-
-    if (typeof dialog.close === "function") {
-      dialog.close();
-    }
-  });
-}
-
-/* ---------------- Player Controls ---------------- */
-
-function setupPlayer() {
-  const playPause = $("#playPauseBtn");
-  const progress = $("#progressBar");
-
-  playPause?.addEventListener("click", async () => {
-    if (!audio.src) return;
-
-    if (audio.paused) {
-      try {
-        await audio.play();
-      } catch (error) {
-        console.error("Resume playback error:", error);
-      }
-    } else {
-      audio.pause();
-    }
-
-    updatePlayButton();
-  });
-
-  progress?.addEventListener("input", () => {
-    if (Number.isFinite(audio.duration) && audio.duration > 0) {
-      audio.currentTime =
-        (Number(progress.value) / 100) * audio.duration;
-    }
-  });
-
-  audio.addEventListener("timeupdate", updateProgress);
-  audio.addEventListener("loadedmetadata", updateProgress);
-  audio.addEventListener("durationchange", updateProgress);
-  audio.addEventListener("play", updatePlayButton);
-  audio.addEventListener("pause", updatePlayButton);
-  audio.addEventListener("ended", updatePlayButton);
-
-  audio.addEventListener("error", () => {
-    console.error("Audio element error:", {
-      code: audio.error?.code,
-      message: audio.error?.message,
-      source: audio.currentSrc
-    });
-
-    const requestId = streamSequence;
-
-    if (currentStreamIndex + 1 < currentStreamCandidates.length) {
-      startStreamCandidate(currentStreamIndex + 1, requestId);
-    } else {
-      updatePlayButton();
-    }
-  });
-}
-
-/* ---------------- Backup / Restore ---------------- */
-
-function setupBackup() {
-  const exportButton = $("#exportBtn");
-  const importButton = $("#importBtn");
-  const importFile = $("#importFile");
-
-  exportButton?.addEventListener("click", () => {
-    const blob = new Blob(
-      [JSON.stringify(state, null, 2)],
-      { type: "application/json" }
+  if (elements.themeButton) {
+    elements.themeButton.setAttribute(
+      "aria-pressed",
+      String(state.theme === "light")
     );
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    elements.themeButton.textContent =
+      state.theme === "light" ? "☀️" : "🌙";
+  }
+}
 
-    link.href = url;
-    link.download = "he3am-music-backup.json";
+function toggleTheme() {
+  state.theme = state.theme === "dark" ? "light" : "dark";
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  applyTheme();
+  saveData();
+}
 
-    URL.revokeObjectURL(url);
-  });
+/* =========================
+   BACKUP / RESTORE
+   ========================= */
 
-  importButton?.addEventListener("click", () => {
-    importFile?.click();
-  });
+function exportBackup() {
+  const backup = {
+    app: APP_NAME,
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    playlists: state.playlists,
+    theme: state.theme,
+    volume: state.volume,
+    repeat: state.repeat,
+    shuffle: state.shuffle
+  };
 
-  importFile?.addEventListener("change", () => {
-    const file = importFile.files?.[0];
-    if (!file) return;
+  const blob = new Blob(
+    [JSON.stringify(backup, null, 2)],
+    { type: "application/json" }
+  );
 
-    const reader = new FileReader();
+  const url = URL.createObjectURL(blob);
+  const link = createElement("a");
 
-    reader.onload = () => {
-      try {
-        const imported = JSON.parse(reader.result);
+  link.href = url;
+  link.download = "he3am-backup.json";
 
-        if (!imported || !Array.isArray(imported.playlists)) {
-          throw new Error("Invalid backup");
-        }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
-        state = { ...state, ...imported };
+  URL.revokeObjectURL(url);
+}
 
-        state.playlists = state.playlists.map(playlist => ({
-          ...playlist,
-          tracks: Array.isArray(playlist.tracks)
-            ? playlist.tracks.map(track => ({
-                ...track,
-                provider: track.provider === "jamendo"
-                  ? "jamendo"
-                  : "audius"
-              }))
-            : []
-        }));
+async function importBackup(file) {
+  if (!file) return;
 
-        if (!["dark", "light"].includes(state.theme)) {
-          state.theme = "dark";
-        }
+  try {
+    const text = await file.text();
+    const backup = JSON.parse(text);
 
-        if (
-          !state.playlists.some(
-            playlist => playlist.id === state.currentPlaylistId
-          )
-        ) {
-          state.currentPlaylistId = state.playlists[0]?.id || null;
-        }
+    const playlists = Array.isArray(backup)
+      ? backup
+      : backup.playlists || backup.userPlaylists;
 
-        saveState();
-        renderAll();
+    if (!Array.isArray(playlists)) {
+      throw new Error("Invalid backup format");
+    }
 
-        alert("Backup imported successfully.");
-      } catch (error) {
-        console.error("Import error:", error);
-        alert("Could not import this backup.");
-      } finally {
-        importFile.value = "";
-      }
-    };
+    state.playlists = playlists.map(playlist => ({
+      ...playlist,
+      tracks: safeArray(playlist.tracks)
+    }));
 
-    reader.readAsText(file);
+    if (backup.theme) state.theme = backup.theme;
+    if (Number.isFinite(backup.volume)) {
+      state.volume = backup.volume;
+    }
+
+    state.repeat = Boolean(backup.repeat);
+    state.shuffle = Boolean(backup.shuffle);
+
+    saveData();
+    applyTheme();
+    renderPlaylists();
+
+    if (audio) audio.volume = state.volume;
+
+    showMessage("بکاپ با موفقیت بازیابی شد.");
+  } catch (error) {
+    console.error("Backup import failed:", error);
+    showMessage("فایل بکاپ معتبر نیست.");
+  }
+}
+
+/* =========================
+   FILTERS
+   ========================= */
+
+function setupProviderFilter() {
+  if (!elements.providerFilter) return;
+
+  elements.providerFilter.addEventListener("change", () => {
+    state.provider = elements.providerFilter.value || "all";
+    renderTracks();
   });
 }
 
-/* ---------------- Render and Init ---------------- */
+/* =========================
+   SEARCH EVENTS
+   ========================= */
 
-function renderAll() {
-  renderPlaylists();
-  renderCurrentPlaylist();
-  updateStats();
-  updatePlayer();
-}
-
-function init() {
-  loadState();
-
-  if (
-    state.playlists.length &&
-    !state.playlists.some(
-      playlist => playlist.id === state.currentPlaylistId
-    )
-  ) {
-    state.currentPlaylistId = state.playlists[0].id;
-    saveState();
+function setupSearch() {
+  if (elements.searchButton) {
+    elements.searchButton.addEventListener("click", () => {
+      searchTracks(elements.searchInput?.value || "");
+    });
   }
 
-  setupSearch();
-  setupTheme();
-  setupPlaylistDialog();
-  setupPlayer();
-  setupBackup();
+  if (elements.searchInput) {
+    elements.searchInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchTracks(elements.searchInput.value);
+      }
+    });
+  }
 
-  renderAll();
+  // Support an existing search form without requiring a new HTML file.
+  const form = elements.searchInput?.closest("form");
 
-  console.log("HE3AM Audius + Jamendo initialized successfully.");
+  if (form) {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      searchTracks(elements.searchInput?.value || "");
+    });
+  }
 }
 
-document.addEventListener("DOMContentLoaded", init);
+/* =========================
+   BUTTON EVENTS
+   ========================= */
+
+function setupButtons() {
+  elements.themeButton?.addEventListener("click", toggleTheme);
+
+  elements.backupButton?.addEventListener("click", exportBackup);
+
+  elements.restoreInput?.addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+
+    await importBackup(file);
+
+    event.target.value = "";
+  });
+
+  const newPlaylistButton = $([
+    "#newPlaylist",
+    "#createPlaylist",
+    "#create-playlist",
+    '[data-action="new-playlist"]'
+  ]);
+
+  newPlaylistButton?.addEventListener("click", () => {
+    const name = prompt("نام پلی‌لیست جدید:");
+
+    if (name) createPlaylist(name);
+  });
+}
+
+/* =========================
+   NOTIFICATIONS
+   ========================= */
+
+function showMessage(message) {
+  console.info(`[${APP_NAME}] ${message}`);
+
+  let notice = $("#he3am-notice");
+
+  if (!notice) {
+    notice = createElement("div", "he3am-notice");
+    notice.id = "he3am-notice";
+
+    Object.assign(notice.style, {
+      position: "fixed",
+      bottom: "20px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      zIndex: "99999",
+      padding: "12px 18px",
+      borderRadius: "12px",
+      background: "#222",
+      color: "#fff",
+      maxWidth: "90%",
+      textAlign: "center"
+    });
+
+    document.body.appendChild(notice);
+  }
+
+  notice.textContent = message;
+  notice.hidden = false;
+
+  clearTimeout(notice._hideTimer);
+
+  notice._hideTimer = setTimeout(() => {
+    notice.hidden = true;
+  }, 3500);
+}
+
+/* =========================
+   OPTIONAL GLOBAL API
+   ========================= */
+
+window.HE3AM = {
+  search: searchTracks,
+  play: playTrack,
+  next: playNext,
+  previous: playPrevious,
+  createPlaylist,
+  addTrackToPlaylist,
+  exportBackup,
+  importBackup,
+  toggleTheme,
+  get state() {
+    return state;
+  }
+};
+
+/* =========================
+   INITIALIZATION
+   ========================= */
+
+function initHE3AM() {
+  discoverElements();
+
+  ensureResultsContainer();
+  ensureStatusContainer();
+
+  loadSavedData();
+  setupPlayer();
+  setupSearch();
+  setupButtons();
+  setupProviderFilter();
+
+  applyTheme();
+  renderPlaylists();
+
+  console.info(`${APP_NAME} Music Hub initialized.`);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initHE3AM, {
+    once: true
+  });
+} else {
+  initHE3AM();
+}
