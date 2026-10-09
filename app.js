@@ -1,6 +1,7 @@
 
 /* ======================================================
-   HE3AM.3AM.MUSIC — Audius via Cloudflare Worker
+   HE3AM.3AM.MUSIC
+   Audius + Jamendo via Cloudflare Worker
    Search, playback, playlists, theme and backup
    ====================================================== */
 
@@ -73,7 +74,13 @@ function loadState() {
     state.playlists = state.playlists.map(playlist => ({
       ...playlist,
       tracks: Array.isArray(playlist.tracks)
-        ? playlist.tracks
+        ? playlist.tracks.map(track => ({
+            ...track,
+            // آهنگ‌های قدیمی که provider ندارند، Audius هستند.
+            provider: track.provider === "jamendo"
+              ? "jamendo"
+              : "audius"
+          }))
         : []
     }));
 
@@ -87,6 +94,12 @@ function loadState() {
 
 /* ---------------- Track helpers ---------------- */
 
+function getProvider(track) {
+  return track?.provider === "jamendo"
+    ? "jamendo"
+    : "audius";
+}
+
 function getArtwork(track) {
   const artwork = track?.artwork;
 
@@ -98,6 +111,8 @@ function getArtwork(track) {
     artwork?.["1000x1000"] ||
     artwork?.["480x480"] ||
     artwork?.["150x150"] ||
+    track?.album_image ||
+    track?.image ||
     track?.thumbnail ||
     "https://placehold.co/500x500?text=HE3AM"
   );
@@ -107,36 +122,89 @@ function getArtist(track) {
   return (
     track?.user?.name ||
     track?.user?.handle ||
+    track?.artist_name ||
     track?.artist ||
     "Unknown Artist"
   );
 }
 
 function getTrackTitle(track) {
-  return track?.title || "Unknown Track";
+  return track?.title || track?.name || "Unknown Track";
 }
 
 function getTrackId(track) {
-  return track?.audiusId || track?.id || null;
+  if (!track) return null;
+
+  if (getProvider(track) === "jamendo") {
+    return track.jamendoId || track.id || null;
+  }
+
+  return track.audiusId || track.id || null;
 }
 
 function getStreamCandidates(track) {
+  if (!track) return [];
+
+  const provider = getProvider(track);
+
+  // Jamendo آدرس صوتی را مستقیماً برمی‌گرداند.
+  if (provider === "jamendo") {
+    const url = track.streamUrl || track.audio;
+    return url ? [url] : [];
+  }
+
   const id = getTrackId(track);
-  if (!id) return [];
+  const candidates = [];
 
-  const params = new URLSearchParams({
-    app_name: APP_NAME
-  });
+  // ابتدا آدرسی را امتحان کن که قبلاً ذخیره شده است.
+  if (track.streamUrl) {
+    candidates.push(track.streamUrl);
+  }
 
-  const encodedId = encodeURIComponent(id);
+  if (id) {
+    const params = new URLSearchParams({
+      app_name: APP_NAME
+    });
 
-  return AUDIUS_BASES.map(base =>
-    `${base}/tracks/${encodedId}/stream?${params}`
-  );
+    const encodedId = encodeURIComponent(id);
+
+    AUDIUS_BASES.forEach(base => {
+      candidates.push(
+        `${base}/tracks/${encodedId}/stream?${params}`
+      );
+    });
+  }
+
+  return [...new Set(candidates)];
 }
 
 function streamUrl(track) {
   return getStreamCandidates(track)[0] || "";
+}
+
+function normalizeAudiusTrack(track) {
+  return {
+    ...track,
+    provider: "audius",
+    audiusId: track?.audiusId || track?.id,
+    title: getTrackTitle(track),
+    artist: getArtist(track),
+    artwork: getArtwork(track),
+    duration: Number(track?.duration) || 0
+  };
+}
+
+function normalizeJamendoTrack(track) {
+  return {
+    ...track,
+    provider: "jamendo",
+    jamendoId: String(track?.jamendoId || track?.id || ""),
+    title: getTrackTitle(track),
+    artist: getArtist(track),
+    artwork: getArtwork(track),
+    streamUrl: track?.streamUrl || track?.audio || "",
+    duration: Number(track?.duration) || 0
+  };
 }
 
 /* ---------------- Playlists ---------------- */
@@ -186,15 +254,24 @@ function addTrackToPlaylist(track, playlistId) {
   const playlist = state.playlists.find(item => item.id === playlistId);
   if (!playlist || !track) return;
 
-  const trackId = getTrackId(track);
+  const normalized = getProvider(track) === "jamendo"
+    ? normalizeJamendoTrack(track)
+    : normalizeAudiusTrack(track);
+
+  const trackId = getTrackId(normalized);
+  const provider = getProvider(normalized);
 
   const exists = playlist.tracks.some(item => {
-    if (trackId && getTrackId(item)) {
-      return getTrackId(item) === trackId;
-    }
+    const sameProvider = getProvider(item) === provider;
+    const sameId = trackId &&
+      getTrackId(item) &&
+      String(getTrackId(item)) === String(trackId);
 
-    return item.title === track.title &&
-      item.artist === track.artist;
+    if (sameProvider && sameId) return true;
+
+    return sameProvider &&
+      item.title === normalized.title &&
+      item.artist === normalized.artist;
   });
 
   if (exists) {
@@ -204,12 +281,14 @@ function addTrackToPlaylist(track, playlistId) {
 
   playlist.tracks.push({
     id: createId(),
-    audiusId: trackId,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: track.artwork || getArtwork(track),
-    streamUrl: track.streamUrl || streamUrl(track),
-    duration: Number(track.duration) || 0
+    provider,
+    audiusId: provider === "audius" ? trackId : null,
+    jamendoId: provider === "jamendo" ? String(trackId || "") : null,
+    title: getTrackTitle(normalized),
+    artist: getArtist(normalized),
+    artwork: getArtwork(normalized),
+    streamUrl: streamUrl(normalized),
+    duration: Number(normalized.duration) || 0
   });
 
   saveState();
@@ -225,10 +304,7 @@ async function audiusFetch(path, options = {}) {
     throw new Error("Unsupported Audius API endpoint.");
   }
 
-  const requestUrl = new URL(
-    "/api/tracks/search",
-    API_PROXY
-  );
+  const requestUrl = new URL("/api/tracks/search", API_PROXY);
 
   sourceUrl.searchParams.forEach((value, key) => {
     requestUrl.searchParams.set(key, value);
@@ -244,13 +320,38 @@ async function audiusFetch(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`Music proxy HTTP ${response.status}`);
+    throw new Error(`Audius proxy HTTP ${response.status}`);
   }
 
   return response.json();
 }
 
-/* ---------------- Search ---------------- */
+/* ---------------- Jamendo API via Worker ---------------- */
+
+async function jamendoFetch(query, options = {}) {
+  const requestUrl = new URL("/api/jamendo/tracks", API_PROXY);
+
+  requestUrl.searchParams.set("query", query);
+  requestUrl.searchParams.set("limit", "15");
+  requestUrl.searchParams.set("offset", "0");
+
+  const response = await fetch(requestUrl.toString(), {
+    ...options,
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...options.headers
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Jamendo proxy HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/* ---------------- Combined Search ---------------- */
 
 async function searchAudius(query) {
   query = String(query || "").trim();
@@ -266,18 +367,18 @@ async function searchAudius(query) {
     searchController.abort();
   }
 
-  searchController = new AbortController();
+  const controller = new AbortController();
+  searchController = controller;
 
-  const controller = searchController;
   const requestId = ++searchSequence;
 
   section.classList.remove("hidden");
-  status.textContent = "Searching Audius...";
+  status.textContent = "Searching Audius + Jamendo...";
 
   results.innerHTML = `
     <div class="empty-state">
       <h3>Searching...</h3>
-      <p>Looking for "${escapeHtml(query)}"</p>
+      <p>Looking for "${escapeHtml(query)}" on Audius and Jamendo.</p>
     </div>
   `;
 
@@ -288,39 +389,95 @@ async function searchAudius(query) {
     sort_method: "relevant"
   });
 
-  try {
-    const json = await audiusFetch(
-      `/tracks/search?${params.toString()}`,
-      { signal: controller.signal }
-    );
+  const [audiusResult, jamendoResult] = await Promise.allSettled([
+    audiusFetch(`/tracks/search?${params.toString()}`, {
+      signal: controller.signal
+    }),
+    jamendoFetch(query, {
+      signal: controller.signal
+    })
+  ]);
 
-    if (requestId !== searchSequence) return;
+  if (requestId !== searchSequence) return;
 
-    onlineTracks = Array.isArray(json?.data)
-      ? json.data
+  if (
+    audiusResult.status === "rejected" &&
+    audiusResult.reason?.name === "AbortError"
+  ) {
+    return;
+  }
+
+  if (
+    jamendoResult.status === "rejected" &&
+    jamendoResult.reason?.name === "AbortError"
+  ) {
+    return;
+  }
+
+  const audiusOK = audiusResult.status === "fulfilled";
+  const jamendoOK = jamendoResult.status === "fulfilled";
+
+  const audiusData = audiusOK
+    ? audiusResult.value?.data
+    : [];
+
+  const jamendoJson = jamendoOK
+    ? jamendoResult.value
+    : {};
+
+  // بعضی Workerها خروجی Jamendo را در results و بعضی در data می‌گذارند.
+  const jamendoData = Array.isArray(jamendoJson?.results)
+    ? jamendoJson.results
+    : Array.isArray(jamendoJson?.data)
+      ? jamendoJson.data
       : [];
 
-    status.textContent = `${onlineTracks.length} result(s) found`;
-    renderOnline();
-  } catch (error) {
-    if (error.name === "AbortError") return;
-    if (requestId !== searchSequence) return;
+  const audiusTracks = Array.isArray(audiusData)
+    ? audiusData.map(normalizeAudiusTrack)
+    : [];
 
-    console.error("Audius search error:", error);
+  const jamendoTracks = Array.isArray(jamendoData)
+    ? jamendoData
+        .filter(track => track?.audio || track?.streamUrl)
+        .map(normalizeJamendoTrack)
+    : [];
 
-    onlineTracks = [];
-    status.textContent = "Could not connect to Audius.";
+  onlineTracks = [...audiusTracks, ...jamendoTracks];
 
+  if (audiusOK && jamendoOK) {
+    status.textContent =
+      `${onlineTracks.length} result(s) found · Audius + Jamendo`;
+  } else if (audiusOK) {
+    status.textContent =
+      `Audius available · Jamendo unavailable · ${audiusTracks.length} result(s)`;
+  } else if (jamendoOK) {
+    status.textContent =
+      `Jamendo available · Audius unavailable · ${jamendoTracks.length} result(s)`;
+  } else {
+    status.textContent = "Both music services are unavailable.";
+  }
+
+  if (!audiusOK) {
+    console.error("Audius search error:", audiusResult.reason);
+  }
+
+  if (!jamendoOK) {
+    console.error("Jamendo search error:", jamendoResult.reason);
+  }
+
+  renderOnline();
+
+  if (!audiusOK && !jamendoOK) {
     results.innerHTML = `
       <div class="empty-state">
-        <h3>Audius is temporarily unavailable.</h3>
-        <p>${escapeHtml(error.message || "Unknown error")}</p>
+        <h3>Music services unavailable</h3>
+        <p>Check your Worker configuration and try again.</p>
       </div>
     `;
   }
 }
 
-/* ---------------- Search results ---------------- */
+/* ---------------- Search Results ---------------- */
 
 function renderOnline() {
   const results = $("#onlineResults");
@@ -336,46 +493,55 @@ function renderOnline() {
     return;
   }
 
-  results.innerHTML = onlineTracks.map((track, index) => `
-    <div class="track-card">
-      <img
-        class="track-cover"
-        src="${escapeHtml(getArtwork(track))}"
-        alt="${escapeHtml(getTrackTitle(track))}"
-        loading="lazy"
-        onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
-      >
+  results.innerHTML = onlineTracks.map((track, index) => {
+    const provider = getProvider(track);
 
-      <div class="track-info">
-        <div class="track-title">
-          ${escapeHtml(getTrackTitle(track))}
+    return `
+      <div class="track-card">
+        <img
+          class="track-cover"
+          src="${escapeHtml(getArtwork(track))}"
+          alt="${escapeHtml(getTrackTitle(track))}"
+          loading="lazy"
+          onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=HE3AM'"
+        >
+
+        <div class="track-info">
+          <div class="track-title">
+            ${escapeHtml(getTrackTitle(track))}
+          </div>
+
+          <div class="track-artist">
+            ${escapeHtml(getArtist(track))}
+          </div>
+
+          <div class="track-provider">
+            ${provider === "jamendo" ? "Jamendo" : "Audius"}
+          </div>
         </div>
-        <div class="track-artist">
-          ${escapeHtml(getArtist(track))}
+
+        <div class="track-actions">
+          <button
+            class="play-online-btn"
+            data-index="${index}"
+            type="button"
+            title="Play"
+          >▶</button>
+
+          <button
+            class="add-online-btn"
+            data-index="${index}"
+            type="button"
+            title="Add to playlist"
+          >+</button>
         </div>
       </div>
-
-      <div class="track-actions">
-        <button
-          class="play-online-btn"
-          data-index="${index}"
-          type="button"
-          title="Play"
-        >▶</button>
-
-        <button
-          class="add-online-btn"
-          data-index="${index}"
-          type="button"
-          title="Add to playlist"
-        >+</button>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 
   results.querySelectorAll(".play-online-btn").forEach(button => {
     button.addEventListener("click", () => {
-      playAudiusTrack(onlineTracks[Number(button.dataset.index)]);
+      playOnlineTrack(onlineTracks[Number(button.dataset.index)]);
     });
   });
 
@@ -395,34 +561,35 @@ function addOnlineTrack(track) {
   }
 
   const playlist = getCurrentPlaylist() || state.playlists[0];
-
-  addTrackToPlaylist({
-    audiusId: track.id,
-    title: getTrackTitle(track),
-    artist: getArtist(track),
-    artwork: getArtwork(track),
-    streamUrl: streamUrl(track),
-    duration: track.duration || 0
-  }, playlist.id);
+  addTrackToPlaylist(track, playlist.id);
 }
 
 /* ---------------- Playback ---------------- */
 
 function setCurrentTrack(track) {
+  const provider = getProvider(track);
+
   state.currentTrack = {
     ...track,
-    audiusId: getTrackId(track),
+    provider,
+    audiusId: provider === "audius"
+      ? getTrackId(track)
+      : track.audiusId || null,
+    jamendoId: provider === "jamendo"
+      ? String(getTrackId(track) || "")
+      : track.jamendoId || null,
     title: getTrackTitle(track),
     artist: getArtist(track),
     artwork: getArtwork(track),
     streamUrl: track.streamUrl || streamUrl(track)
   };
 
+  saveState();
   updatePlayer();
 }
 
 function showPlaybackError(error) {
-  console.error("Audius playback error:", error);
+  console.error("Playback error:", error);
 
   const status = $("#onlineStatus");
 
@@ -439,7 +606,7 @@ function startStreamCandidate(index, requestId) {
     updatePlayButton();
 
     showPlaybackError(
-      new Error("All available Audius stream endpoints failed.")
+      new Error("All available stream URLs failed.")
     );
 
     alert(
@@ -466,7 +633,7 @@ function startStreamCandidate(index, requestId) {
     playPromise.catch(error => {
       if (requestId !== streamSequence) return;
 
-      console.warn(`Audius stream attempt ${index + 1} failed:`, error);
+      console.warn(`Stream attempt ${index + 1} failed:`, error);
 
       if (error.name === "NotAllowedError") {
         updatePlayButton();
@@ -478,13 +645,13 @@ function startStreamCandidate(index, requestId) {
   }
 }
 
-function playAudiusTrack(track) {
+function playOnlineTrack(track) {
   if (!track) return;
 
   const candidates = getStreamCandidates(track);
 
   if (!candidates.length) {
-    alert("Audius did not provide a valid track ID.");
+    alert("This track does not have a valid stream URL or track ID.");
     return;
   }
 
@@ -501,29 +668,32 @@ function playAudiusTrack(track) {
   startStreamCandidate(0, requestId);
 }
 
+// سازگاری با کدهای قبلی که این تابع را صدا می‌زنند.
+function playAudiusTrack(track) {
+  playOnlineTrack({
+    ...track,
+    provider: "audius"
+  });
+}
+
 function playLocalTrack(track) {
   if (!track) return;
 
   const candidates = getStreamCandidates(track);
-  const urls = candidates.length
-    ? candidates
-    : track.streamUrl
-      ? [track.streamUrl]
-      : [];
 
-  if (!urls.length) {
+  if (!candidates.length) {
     alert("This track does not have a playable stream.");
     return;
   }
 
   const requestId = ++streamSequence;
 
-  currentStreamCandidates = urls;
+  currentStreamCandidates = candidates;
   currentStreamIndex = 0;
 
   setCurrentTrack({
     ...track,
-    streamUrl: urls[0]
+    streamUrl: candidates[0]
   });
 
   startStreamCandidate(0, requestId);
@@ -547,6 +717,7 @@ function updatePlayer() {
       cover.onerror = null;
       cover.src = "https://placehold.co/500x500?text=HE3AM";
     };
+
     cover.src = track.artwork || getArtwork(track);
   }
 
@@ -582,11 +753,16 @@ function updateProgress() {
         : 0;
   }
 
-  if (current) current.textContent = formatTime(audio.currentTime);
-  if (duration) duration.textContent = formatTime(audio.duration);
+  if (current) {
+    current.textContent = formatTime(audio.currentTime);
+  }
+
+  if (duration) {
+    duration.textContent = formatTime(audio.duration);
+  }
 }
 
-/* ---------------- Playlist rendering ---------------- */
+/* ---------------- Playlist Rendering ---------------- */
 
 function renderPlaylists() {
   const container = $("#playlistGrid");
@@ -685,6 +861,9 @@ function renderCurrentPlaylist() {
           <div class="track-info">
             <div class="track-title">${escapeHtml(track.title)}</div>
             <div class="track-artist">${escapeHtml(track.artist)}</div>
+            <div class="track-provider">
+              ${getProvider(track) === "jamendo" ? "Jamendo" : "Audius"}
+            </div>
           </div>
 
           <button
@@ -723,7 +902,7 @@ function updateStats() {
   }
 }
 
-/* ---------------- Search controls ---------------- */
+/* ---------------- Search Controls ---------------- */
 
 function setupSearch() {
   const input = $("#searchInput");
@@ -751,6 +930,7 @@ function setupSearch() {
     if (!query) {
       if (searchController) searchController.abort();
       searchSequence++;
+      onlineTracks = [];
       $("#onlineSection")?.classList.add("hidden");
       return;
     }
@@ -787,7 +967,7 @@ function setupTheme() {
   });
 }
 
-/* ---------------- Playlist dialog ---------------- */
+/* ---------------- Playlist Dialog ---------------- */
 
 function setupPlaylistDialog() {
   const openButton = $("#newPlaylistBtn");
@@ -828,7 +1008,7 @@ function setupPlaylistDialog() {
   });
 }
 
-/* ---------------- Player controls ---------------- */
+/* ---------------- Player Controls ---------------- */
 
 function setupPlayer() {
   const playPause = $("#playPauseBtn");
@@ -881,7 +1061,7 @@ function setupPlayer() {
   });
 }
 
-/* ---------------- Backup / restore ---------------- */
+/* ---------------- Backup / Restore ---------------- */
 
 function setupBackup() {
   const exportButton = $("#exportBtn");
@@ -930,12 +1110,25 @@ function setupBackup() {
         state.playlists = state.playlists.map(playlist => ({
           ...playlist,
           tracks: Array.isArray(playlist.tracks)
-            ? playlist.tracks
+            ? playlist.tracks.map(track => ({
+                ...track,
+                provider: track.provider === "jamendo"
+                  ? "jamendo"
+                  : "audius"
+              }))
             : []
         }));
 
         if (!["dark", "light"].includes(state.theme)) {
           state.theme = "dark";
+        }
+
+        if (
+          !state.playlists.some(
+            playlist => playlist.id === state.currentPlaylistId
+          )
+        ) {
+          state.currentPlaylistId = state.playlists[0]?.id || null;
         }
 
         saveState();
@@ -954,7 +1147,7 @@ function setupBackup() {
   });
 }
 
-/* ---------------- Render and init ---------------- */
+/* ---------------- Render and Init ---------------- */
 
 function renderAll() {
   renderPlaylists();
@@ -984,7 +1177,7 @@ function init() {
 
   renderAll();
 
-  console.log("HE3AM.3AM.MUSIC initialized successfully.");
+  console.log("HE3AM Audius + Jamendo initialized successfully.");
 }
 
 document.addEventListener("DOMContentLoaded", init);
