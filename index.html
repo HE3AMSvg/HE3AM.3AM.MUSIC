@@ -123,6 +123,14 @@
       <div class="dialog-actions"><button id="cancelPlaylistBtn" class="secondary-button" type="button">Cancel</button><button class="primary-button" type="submit">Save playlist</button></div>
     </form>
   </dialog>
+  <dialog id="addTrackDialog" class="playlist-dialog">
+    <form id="addTrackForm">
+      <div class="dialog-heading"><p class="eyebrow">YOUR COLLECTION</p><h2>Add to playlist</h2></div>
+      <label for="addTrackSelect">Choose a playlist</label>
+      <select id="addTrackSelect" class="provider-select" required></select>
+      <div class="dialog-actions"><button id="cancelAddTrack" class="secondary-button" type="button">Cancel</button><button class="primary-button" type="submit">Add song</button></div>
+    </form>
+  </dialog>
   <audio id="audioPlayer" preload="metadata"></audio>
   <div id="messageRegion" class="message-region" aria-live="polite" aria-atomic="true"></div>
 </body>
