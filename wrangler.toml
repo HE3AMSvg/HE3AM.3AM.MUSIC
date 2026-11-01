@@ -1,0 +1,7 @@
+name = "he3am-3am-music-api"
+main = "worker/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://he3amsvg.github.io,http://localhost:8000,http://127.0.0.1:8000"
