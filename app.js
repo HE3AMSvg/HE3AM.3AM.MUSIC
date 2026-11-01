@@ -8,7 +8,7 @@
 /* ---------------- CONFIG ---------------- */
 
 const APP_NAME = "HE3AM";
-const API_PROXY = "https://he3am.ghostrip82.workers.dev";
+const API_PROXY = window.HE3AM_CONFIG?.apiBaseUrl || "https://he3am.ghostrip82.workers.dev";
 const STORAGE_KEY = "pulseMusic";
 const AUDIUS_DIRECT_API = "https://api.audius.co/v1";
 
@@ -65,6 +65,9 @@ const dom = {
   emptyLibrary: byId("emptyLibrary"),
 
   playlistDialog: byId("playlistDialog"),
+  addTrackDialog: byId("addTrackDialog"),
+  addTrackForm: byId("addTrackForm"),
+  addTrackSelect: byId("addTrackSelect"),
   playlistForm: byId("playlistForm"),
   playlistDialogTitle: byId("playlistDialogTitle"),
   playlistName: byId("playlistName"),
@@ -122,6 +125,7 @@ const state = {
 
   playlistDialogMode: "create",
   editingPlaylistId: null,
+  pendingTrack: null,
 
   playbackToken: 0,
   playbackCandidates: [],
@@ -263,27 +267,10 @@ function notify(message, type = "info", timeout = 3200) {
 /* ---------------- API ---------------- */
 
 async function fetchJSON(url, options = {}) {
-  const controller = new AbortController();
-
-  const timeout = window.setTimeout(
-    () => controller.abort(),
-    REQUEST_TIMEOUT
-  );
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`Request failed (${response.status}).`);
-    }
-
-    return await response.json();
-  } finally {
-    window.clearTimeout(timeout);
-  }
+  return window.HE3AM.services.api.get(url, {
+    ...options,
+    timeout: REQUEST_TIMEOUT
+  });
 }
 
 function buildQueryURL(base, path, query) {
@@ -923,7 +910,7 @@ function loadState() {
   let raw;
 
   try {
-    raw = localStorage.getItem(STORAGE_KEY);
+    raw = window.HE3AM.services.library.readRaw(STORAGE_KEY);
   } catch (error) {
     console.warn("Local storage is unavailable.", error);
     return;
@@ -987,7 +974,13 @@ function saveState() {
   };
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const saved = window.HE3AM.services.library.writeRaw(
+      STORAGE_KEY,
+      JSON.stringify(payload)
+    );
+    if (!saved) {
+      throw new Error("Browser storage is unavailable or full.");
+    }
   } catch (error) {
     console.error("Could not save state:", error);
     notify("Could not save data. Browser storage may be full.", "error");
@@ -1221,6 +1214,8 @@ function closePlaylistDialog() {
   if (dom.playlistDialog?.open) {
     dom.playlistDialog.close();
   }
+
+  state.pendingTrack = null;
 }
 
 function savePlaylistName(name, mode, playlistId = null) {
@@ -1255,12 +1250,20 @@ function savePlaylistName(name, mode, playlistId = null) {
 
   const playlist = createPlaylistObject(name);
 
+  if (state.pendingTrack) {
+    playlist.tracks.push(state.pendingTrack);
+    state.pendingTrack = null;
+  }
+
   state.playlists.unshift(playlist);
   state.currentPlaylistId = playlist.id;
 
   saveState();
   renderAll();
-  notify("Playlist created.", "success");
+  notify(
+    playlist.tracks.length ? "Playlist created and track added." : "Playlist created.",
+    "success"
+  );
 
   return true;
 }
@@ -1310,78 +1313,40 @@ function addTrackToPlaylist(track) {
     return;
   }
 
+  state.pendingTrack = track;
+
   if (!state.playlists.length) {
-    if (window.confirm("You don't have any playlists. Create one now?")) {
-      openPlaylistDialog("create");
-    }
-
+    openPlaylistDialog("create");
+    notify("Create a playlist and this song will be added to it.");
     return;
   }
 
-  const options = state.playlists
-    .map((playlist, index) => `${index + 1}. ${playlist.name}`)
-    .join("\n");
-
-  const answer = window.prompt(
-    `Choose a playlist by number:\n\n${options}\n\nEnter 0 to create a new playlist.`,
-    "1"
-  );
-
-  if (answer === null) {
+  if (!dom.addTrackDialog || !dom.addTrackSelect) {
+    notify("Playlist picker is unavailable.", "error");
+    state.pendingTrack = null;
     return;
   }
 
-  const selection = Number(answer);
+  dom.addTrackSelect.replaceChildren();
 
-  if (!Number.isInteger(selection)) {
-    notify("Enter a valid playlist number.", "error");
-    return;
+  for (const playlist of state.playlists) {
+    const option = document.createElement("option");
+    option.value = playlist.id;
+    option.textContent = playlist.name;
+    dom.addTrackSelect.appendChild(option);
   }
 
-  if (selection === 0) {
-    const name = window.prompt("Enter a name for the new playlist:");
-
-    if (!name || !name.trim()) {
-      return;
-    }
-
-    if (name.trim().length > 60) {
-      notify("Playlist names must be 60 characters or less.", "error");
-      return;
-    }
-
-    const playlist = createPlaylistObject(name.trim());
+  if (typeof dom.addTrackDialog.showModal === "function") {
+    dom.addTrackDialog.showModal();
+  } else {
+    const playlist = state.playlists[0];
     playlist.tracks.push(track);
-
-    state.playlists.unshift(playlist);
     state.currentPlaylistId = playlist.id;
-
+    state.pendingTrack = null;
     saveState();
     renderAll();
-
-    notify("Playlist created and track added.", "success");
-    return;
+    notify(`Added to "${playlist.name}".`, "success");
   }
-
-  if (selection < 1 || selection > state.playlists.length) {
-    notify("That playlist number does not exist.", "error");
-    return;
-  }
-
-  const playlist = state.playlists[selection - 1];
-
-  if (playlist.tracks.some(item => item.id === track.id)) {
-    notify("This track is already in that playlist.");
-    return;
-  }
-
-  playlist.tracks.push(track);
-  state.currentPlaylistId = playlist.id;
-
-  saveState();
-  renderAll();
-
-  notify(`Added to "${playlist.name}".`, "success");
 }
 
 /* ---------------- LIKED SONGS ---------------- */
@@ -2357,12 +2322,57 @@ function setupPlaylistEvents() {
   });
 
   byId("cancelPlaylistBtn")?.addEventListener("click", closePlaylistDialog);
-  byId("cancelPlaylistBtnBottom")?.addEventListener("click", closePlaylistDialog);
+
+  byId("cancelAddTrack")?.addEventListener("click", () => {
+    state.pendingTrack = null;
+    dom.addTrackDialog?.close();
+  });
+
+  dom.addTrackDialog?.addEventListener("cancel", () => {
+    state.pendingTrack = null;
+  });
+
+  dom.addTrackDialog?.addEventListener("click", event => {
+    if (event.target === dom.addTrackDialog) {
+      state.pendingTrack = null;
+      dom.addTrackDialog.close();
+    }
+  });
+
+  dom.addTrackForm?.addEventListener("submit", event => {
+    event.preventDefault();
+    const playlist = getPlaylistById(dom.addTrackSelect?.value);
+    const track = state.pendingTrack;
+
+    if (!playlist || !track) {
+      notify("Choose a playlist first.", "error");
+      return;
+    }
+
+    if (playlist.tracks.some(item => item.id === track.id)) {
+      notify("This track is already in that playlist.");
+      state.pendingTrack = null;
+      dom.addTrackDialog.close();
+      return;
+    }
+
+    playlist.tracks.push(track);
+    state.currentPlaylistId = playlist.id;
+    state.pendingTrack = null;
+    dom.addTrackDialog.close();
+    saveState();
+    renderAll();
+    notify(`Added to "${playlist.name}".`, "success");
+  });
 
   dom.playlistDialog?.addEventListener("click", event => {
     if (event.target === dom.playlistDialog) {
       closePlaylistDialog();
     }
+  });
+
+  dom.playlistDialog?.addEventListener("cancel", () => {
+    state.pendingTrack = null;
   });
 
   dom.playlistForm?.addEventListener("submit", event => {

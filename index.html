@@ -1,697 +1,137 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <meta
-    name="description"
-    content="HE3AM Music Hub — Discover, play and organize your favorite music."
-  >
-
-  <meta name="theme-color" content="#0b0d0c">
-
-  <title>HE3AM — Music Hub</title>
-
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101311">
+  <meta name="description" content="HE3AM 3AM Music — search, play and organize your music.">
+  <title>HE3AM 3AM MUSIC</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
-  >
-
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-
+  <script src="config.js" defer></script>
+  <script src="services.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-
 <body>
   <div class="app-shell">
-
-    <!-- SIDEBAR -->
-
     <aside class="sidebar">
-
-      <a href="#" class="brand" id="brandHome" aria-label="HE3AM Home">
-        <span class="brand-icon">H</span>
-
-        <span class="brand-text">
-          HE3AM<span class="brand-dot">.</span>
-          <small>MUSIC HUB</small>
-        </span>
-      </a>
-
+      <a href="#" class="brand" id="brandHome"><span class="brand-mark">H</span><span>HE3AM <small>3AM MUSIC</small></span></a>
       <nav class="main-nav" aria-label="Main navigation">
-
-        <button
-          class="nav-item active"
-          type="button"
-          data-view="home"
-        >
-          <span class="nav-icon">⌂</span>
-          <span>Home</span>
-        </button>
-
-        <button
-          class="nav-item"
-          type="button"
-          data-view="search"
-        >
-          <span class="nav-icon">⌕</span>
-          <span>Search</span>
-        </button>
-
-        <button
-          class="nav-item"
-          type="button"
-          data-view="library"
-        >
-          <span class="nav-icon">▤</span>
-          <span>Your Library</span>
-        </button>
-
+        <button class="nav-item active" type="button" data-view="home"><span>⌂</span>Home</button>
+        <button class="nav-item" type="button" data-view="search"><span>⌕</span>Search</button>
+        <button class="nav-item" type="button" data-view="library"><span>▤</span>Your library</button>
       </nav>
-
-      <div class="sidebar-divider"></div>
-
-      <div class="sidebar-section-heading">
-        <span>YOUR PLAYLISTS</span>
-
-        <button
-          id="newPlaylistBtn"
-          class="icon-button"
-          type="button"
-          aria-label="Create playlist"
-          title="Create playlist"
-        >+</button>
-      </div>
-
+      <div class="sidebar-heading"><span>Your playlists</span><button id="newPlaylistBtn" class="icon-button" type="button" aria-label="Create playlist">＋</button></div>
       <div id="playlistGrid" class="sidebar-playlists"></div>
-
       <div class="sidebar-bottom">
-
-        <button id="exportBtn" class="sidebar-action" type="button">
-          <span>⇩</span>
-          <span>Export backup</span>
-        </button>
-
-        <button id="importBtn" class="sidebar-action" type="button">
-          <span>⇧</span>
-          <span>Import backup</span>
-        </button>
-
-        <input
-          id="importFile"
-          type="file"
-          accept=".json,application/json"
-          hidden
-        >
-
-        <button id="themeToggle" class="sidebar-action" type="button">
-          <span id="themeIcon">☼</span>
-          <span id="themeLabel">Light theme</span>
-        </button>
-
+        <button id="exportBtn" class="sidebar-action" type="button">⇩ <span>Export backup</span></button>
+        <button id="importBtn" class="sidebar-action" type="button">⇧ <span>Import backup</span></button>
+        <input id="importFile" type="file" accept=".json,application/json" hidden>
+        <button id="themeToggle" class="sidebar-action" type="button"><span id="themeIcon">☼</span><span id="themeLabel">Light theme</span></button>
       </div>
-
-      <div class="sidebar-footer">
-        <span class="status-dot"></span>
-        <span>HE3AM is ready</span>
-      </div>
-
+      <div class="sidebar-footer"><span class="status-dot"></span> Your music space</div>
     </aside>
 
-    <!-- MAIN CONTENT -->
-
     <main class="main-content">
-
       <header class="topbar">
-
+        <div class="mobile-brand"><span class="brand-mark">H</span> HE3AM</div>
         <div class="topbar-navigation">
-          <button
-            id="backToTop"
-            class="round-button"
-            type="button"
-            aria-label="Go home"
-            title="Home"
-          >‹</button>
-
-          <button
-            id="forwardToSearch"
-            class="round-button"
-            type="button"
-            aria-label="Go to search"
-            title="Search"
-          >›</button>
+          <button id="backToTop" class="round-button" type="button" aria-label="Home">‹</button>
+          <button id="forwardToSearch" class="round-button" type="button" aria-label="Search">›</button>
         </div>
-
         <form id="searchForm" class="top-search" role="search">
-
-          <span class="search-symbol">⌕</span>
-
-          <input
-            id="searchInput"
-            type="search"
-            placeholder="What do you want to listen to?"
-            autocomplete="off"
-            aria-label="Search music"
-          >
-
-          <button type="submit" id="searchButton">
-            Search
-          </button>
-
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="Search songs or artists..." autocomplete="off" aria-label="Search music">
+          <button id="searchButton" type="submit">Search</button>
         </form>
-
-        <div class="topbar-badge">
-          <span class="status-dot"></span>
-          <span>Music Hub</span>
-        </div>
-
+        <span class="topbar-label">3AM MUSIC</span>
       </header>
 
-      <!-- HOME -->
-
       <section id="homeView" class="page-view active">
-
-        <section class="hero">
-
-          <div class="hero-content">
-
-            <div class="eyebrow">
-              <span class="eyebrow-line"></span>
-              YOUR PERSONAL MUSIC SPACE
-            </div>
-
-            <h1>
-              Music for your
-              <span class="gradient-text">3AM thoughts.</span>
-            </h1>
-
-            <p>
-              Discover new sounds, find your favorite tracks
-              and build your own world of music.
-            </p>
-
-            <div class="hero-actions">
-
-              <button
-                id="heroSearchBtn"
-                class="primary-button"
-                type="button"
-              >
-                <span>⌕</span>
-                Discover music
-              </button>
-
-              <button
-                id="viewLibraryBtn"
-                class="secondary-button"
-                type="button"
-              >
-                Your library
-              </button>
-
-            </div>
-
-            <div class="hero-stats">
-
-              <div class="stat">
-                <strong id="trackCount">0</strong>
-                <span>Saved tracks</span>
-              </div>
-
-              <div class="stat-divider"></div>
-
-              <div class="stat">
-                <strong id="playlistCount">0</strong>
-                <span>Playlists</span>
-              </div>
-
-            </div>
-
+        <section class="welcome">
+          <div><p class="eyebrow">YOUR PERSONAL MUSIC SPACE</p><h1>Music for your<br><span>3AM thoughts.</span></h1><p>Find a track, press play, and make it yours.</p></div>
+          <div class="welcome-actions">
+            <button id="heroSearchBtn" class="primary-button" type="button">⌕ Discover music</button>
+            <button id="viewLibraryBtn" class="secondary-button" type="button">Your library</button>
           </div>
-
-          <div class="hero-art" aria-hidden="true">
-
-            <div class="art-glow"></div>
-
-            <div class="art-disc">
-              <div class="art-disc-center">
-                <span>H</span>
-              </div>
-            </div>
-
-            <div class="floating-tag tag-top">
-              <span class="tag-dot"></span>
-              FIND YOUR SOUND
-            </div>
-
-            <div class="floating-tag tag-bottom">
-              <span>♫</span>
-              YOUR 3AM MIX
-            </div>
-
-          </div>
-
         </section>
-
-        <section class="content-section">
-
-          <div class="section-heading">
-            <div>
-              <span class="section-kicker">PICK YOUR MOOD</span>
-              <h2>Explore by mood</h2>
-            </div>
-          </div>
-
-          <div class="mood-grid">
-
-            <button
-              class="mood-card mood-chill"
-              type="button"
-              data-query="chill"
-            >
-              <span class="mood-number">01</span>
-              <span class="mood-title">Chill</span>
-              <span class="mood-description">Slow down and breathe.</span>
-              <span class="mood-symbol">☾</span>
-            </button>
-
-            <button
-              class="mood-card mood-indie"
-              type="button"
-              data-query="indie"
-            >
-              <span class="mood-number">02</span>
-              <span class="mood-title">Indie</span>
-              <span class="mood-description">Sounds off the radar.</span>
-              <span class="mood-symbol">✳</span>
-            </button>
-
-            <button
-              class="mood-card mood-electronic"
-              type="button"
-              data-query="electronic"
-            >
-              <span class="mood-number">03</span>
-              <span class="mood-title">Electronic</span>
-              <span class="mood-description">Feel the frequency.</span>
-              <span class="mood-symbol">⌁</span>
-            </button>
-
-          </div>
-
+        <section class="stats">
+          <div class="stat-card"><strong id="trackCount">0</strong><span>Saved tracks</span></div>
+          <div class="stat-card"><strong id="playlistCount">0</strong><span>Playlists</span></div>
         </section>
-
         <section class="content-section">
-
-          <div class="section-heading">
-            <div>
-              <span class="section-kicker">YOUR COLLECTION</span>
-              <h2>Made by you</h2>
-            </div>
-
-            <button
-              id="browseSearchBtn"
-              class="text-button"
-              type="button"
-            >
-              Open library →
-            </button>
-          </div>
-
+          <div class="section-heading"><div><p class="eyebrow">YOUR COLLECTION</p><h2>Recently made</h2></div><button id="browseSearchBtn" class="text-button" type="button">Open library →</button></div>
           <div id="homePlaylists" class="playlist-card-grid"></div>
-
           <div id="homePlaylistsEmpty" class="empty-state compact-empty">
-            <div class="empty-state-icon">♫</div>
-            <h3>Your music starts here</h3>
-            <p>Create a playlist and collect the tracks you love.</p>
-
-            <button
-              class="primary-button"
-              type="button"
-              data-create-playlist
-            >
-              + Create playlist
-            </button>
+            <div class="empty-icon">♫</div><h3>Your library starts here</h3><p>Create a playlist and add the songs you like.</p>
+            <button class="primary-button" type="button" data-create-playlist>＋ Create playlist</button>
           </div>
-
         </section>
-
       </section>
 
-      <!-- SEARCH -->
-
-      <section id="searchView" class="page-view">
-
-        <div class="page-heading">
-          <div>
-            <span class="section-kicker">FIND YOUR NEXT FAVORITE</span>
-            <h1>Search music<span class="brand-dot">.</span></h1>
-            <p>Search for tracks, artists and new sounds.</p>
-          </div>
-        </div>
-
-        <div class="search-toolbar">
-
-          <label for="providerFilter" class="filter-label">
-            MUSIC SOURCE
-          </label>
-
-          <select id="providerFilter" class="provider-select">
-            <option value="all">All sources</option>
-            <option value="audius">Audius</option>
-            <option value="jamendo">Jamendo</option>
-          </select>
-
-        </div>
-
+      <section id="searchView" class="page-view" hidden>
+        <div class="page-heading"><p class="eyebrow">DISCOVER</p><h1>Search music<span class="brand-dot">.</span></h1><p>Search tracks from connected music sources.</p></div>
+        <div class="search-toolbar"><label for="providerFilter">SOURCE</label><select id="providerFilter" class="provider-select"><option value="all">All sources</option><option value="audius">Audius</option><option value="jamendo">Jamendo</option></select></div>
         <div id="searchStatus" class="status-message" aria-live="polite"></div>
-
-        <section id="onlineSection" class="results-section">
-
-          <div class="section-heading results-heading">
-            <div>
-              <span class="section-kicker">DISCOVER</span>
-              <h2 id="resultsHeading">Search results</h2>
-            </div>
-
-            <span id="onlineStatus" class="results-count"></span>
-          </div>
-
+        <section class="results-section">
+          <div class="section-heading"><h2 id="resultsHeading">Search results</h2><span id="onlineStatus" class="results-count"></span></div>
           <div id="onlineResults" class="track-list"></div>
-
-          <div id="searchEmptyState" class="empty-state">
-            <div class="empty-state-icon">⌕</div>
-            <h3>Find something you love</h3>
-            <p>Enter a song, artist or genre in the search bar above.</p>
-          </div>
-
+          <div id="searchEmptyState" class="empty-state"><div class="empty-icon">⌕</div><h3>Find something you love</h3><p>Type a song, artist or genre in the search bar.</p></div>
         </section>
-
       </section>
 
-      <!-- LIBRARY -->
-
-      <section id="libraryView" class="page-view">
-
-        <div class="page-heading">
-
-          <div>
-            <span class="section-kicker">YOUR PERSONAL COLLECTION</span>
-            <h1>Your library<span class="brand-dot">.</span></h1>
-            <p>Your playlists and saved music, all in one place.</p>
-          </div>
-
-          <button
-            id="libraryNewPlaylistBtn"
-            class="primary-button"
-            type="button"
-          >
-            + New playlist
-          </button>
-
-        </div>
-
+      <section id="libraryView" class="page-view" hidden>
+        <div class="page-heading page-heading-row"><div><p class="eyebrow">YOUR COLLECTION</p><h1>Your library<span class="brand-dot">.</span></h1><p>All your playlists in one place.</p></div><button id="libraryNewPlaylistBtn" class="primary-button" type="button">＋ New playlist</button></div>
         <div id="libraryPlaylistGrid" class="playlist-card-grid"></div>
-
+        <div id="libraryEmptyState" class="empty-state"><div class="empty-icon">▤</div><h3>No playlists yet</h3><p>Create your first playlist to get started.</p><button class="primary-button" type="button" data-create-playlist>＋ Create playlist</button></div>
         <section id="currentPlaylist" class="current-playlist" hidden>
-
-          <div class="playlist-detail-header">
-
-            <div class="playlist-detail-art">
-              <span>♫</span>
-            </div>
-
-            <div class="playlist-detail-info">
-              <span class="section-kicker">PLAYLIST</span>
-
-              <h2 id="currentPlaylistTitle">Playlist</h2>
-
-              <p id="currentPlaylistMeta">0 tracks</p>
-
-              <div class="playlist-detail-actions">
-
-                <button
-                  id="playPlaylistBtn"
-                  class="primary-button"
-                  type="button"
-                >
-                  ▶ Play
-                </button>
-
-                <button
-                  id="renamePlaylistBtn"
-                  class="secondary-button"
-                  type="button"
-                >
-                  Rename
-                </button>
-
-                <button
-                  id="deletePlaylistBtn"
-                  class="danger-button"
-                  type="button"
-                >
-                  Delete
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div class="section-heading playlist-tracks-heading">
-            <div>
-              <span class="section-kicker">YOUR TRACKS</span>
-              <h2>Tracklist</h2>
-            </div>
-          </div>
-
+          <div class="playlist-detail-header"><div class="playlist-detail-art">♫</div><div><p class="eyebrow">PLAYLIST</p><h2 id="currentPlaylistTitle">Playlist</h2><p id="currentPlaylistMeta">0 tracks</p><div class="playlist-detail-actions"><button id="playPlaylistBtn" class="primary-button" type="button">▶ Play</button><button id="renamePlaylistBtn" class="secondary-button" type="button">Rename</button><button id="deletePlaylistBtn" class="danger-button" type="button">Delete</button></div></div></div>
+          <div class="section-heading"><h2>Tracks</h2></div>
           <div id="playlistTracks" class="track-list"></div>
-
-          <div id="emptyLibrary" class="empty-state compact-empty">
-            <div class="empty-state-icon">♫</div>
-            <h3>This playlist is empty</h3>
-            <p>Search for music and add tracks to this playlist.</p>
-
-            <button
-              id="emptySearchBtn"
-              class="primary-button"
-              type="button"
-            >
-              Find music
-            </button>
-          </div>
-
+          <div id="emptyLibrary" class="empty-state compact-empty"><h3>This playlist is empty</h3><p>Search for music and add tracks here.</p><button id="emptySearchBtn" class="primary-button" type="button">Find music</button></div>
         </section>
-
-        <div id="libraryEmptyState" class="empty-state">
-          <div class="empty-state-icon">▤</div>
-          <h3>Your library is waiting</h3>
-          <p>Create your first playlist and start collecting music.</p>
-
-          <button
-            class="primary-button"
-            type="button"
-            data-create-playlist
-          >
-            + Create playlist
-          </button>
-        </div>
-
       </section>
-
-      <footer class="app-footer">
-        <span>HE3AM MUSIC HUB</span>
-        <span>Made for the late-night listeners.</span>
-      </footer>
-
+      <footer class="app-footer">HE3AM 3AM MUSIC <span>Made for the late-night listeners.</span></footer>
     </main>
-
   </div>
 
-  <!-- PLAYER -->
-
   <footer id="player" class="player">
-
     <div class="player-track">
-
-      <div class="player-cover" id="playerCover">
-
-        <img
-          id="playerCoverImage"
-          src=""
-          alt=""
-          hidden
-        >
-
-        <span id="playerCoverFallback">♫</span>
-
-      </div>
-
-      <div class="player-track-info">
-        <div id="playerTitle" class="player-title">Choose a track</div>
-        <div id="playerArtist" class="player-artist">HE3AM Music Hub</div>
-      </div>
-
-      <button
-        id="playerLikeBtn"
-        class="icon-button player-like"
-        type="button"
-        aria-label="Like current track"
-        title="Like track"
-        disabled
-      >♡</button>
-
+      <div class="player-cover"><img id="playerCoverImage" src="" alt="" hidden><span id="playerCoverFallback">♫</span></div>
+      <div class="player-track-info"><strong id="playerTitle">Choose a track</strong><small id="playerArtist">HE3AM 3AM MUSIC</small></div>
+      <button id="playerLikeBtn" class="icon-button player-like" type="button" aria-label="Like current track" disabled>♡</button>
     </div>
-
     <div class="player-center">
-
       <div class="player-controls">
-
-        <button
-          id="shuffleBtn"
-          class="player-control"
-          type="button"
-          aria-label="Shuffle"
-          title="Shuffle"
-        >⤨</button>
-
-        <button
-          id="previousTrack"
-          class="player-control"
-          type="button"
-          aria-label="Previous track"
-          title="Previous"
-        >|‹</button>
-
-        <button
-          id="playPauseBtn"
-          class="play-button"
-          type="button"
-          aria-label="Play"
-          title="Play"
-        >▶</button>
-
-        <button
-          id="nextTrack"
-          class="player-control"
-          type="button"
-          aria-label="Next track"
-          title="Next"
-        >›|</button>
-
-        <button
-          id="repeatBtn"
-          class="player-control"
-          type="button"
-          aria-label="Repeat mode"
-          title="Repeat off"
-        >↻</button>
-
+        <button id="shuffleBtn" class="player-control" type="button" aria-label="Shuffle" title="Shuffle">⤨</button>
+        <button id="previousTrack" class="player-control" type="button" aria-label="Previous track">|‹</button>
+        <button id="playPauseBtn" class="play-button" type="button" aria-label="Play">▶</button>
+        <button id="nextTrack" class="player-control" type="button" aria-label="Next track">›|</button>
+        <button id="repeatBtn" class="player-control" type="button" aria-label="Repeat mode" title="Repeat off">↻</button>
       </div>
-
-      <div class="progress-row">
-
-        <span id="currentTime" class="time-label">0:00</span>
-
-        <input
-          id="progressBar"
-          class="progress-bar"
-          type="range"
-          min="0"
-          max="1000"
-          value="0"
-          step="1"
-          aria-label="Track progress"
-        >
-
-        <span id="duration" class="time-label">0:00</span>
-
-      </div>
-
+      <div class="progress-row"><span id="currentTime">0:00</span><input id="progressBar" type="range" min="0" max="1000" value="0" step="1" aria-label="Track progress"><span id="duration">0:00</span></div>
     </div>
-
-    <div class="player-extra">
-
-      <span class="volume-icon">◖</span>
-
-      <input
-        id="volume"
-        class="volume-slider"
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value="0.8"
-        aria-label="Volume"
-      >
-
-    </div>
-
+    <div class="player-extra"><span>◖</span><input id="volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></div>
   </footer>
 
-  <!-- PLAYLIST DIALOG -->
-
   <dialog id="playlistDialog" class="playlist-dialog">
-
     <form id="playlistForm">
-
-      <div class="dialog-heading">
-        <span class="section-kicker">YOUR COLLECTION</span>
-        <h2 id="playlistDialogTitle">Create playlist</h2>
-      </div>
-
-      <label for="playlistName">Playlist name</label>
-
-      <input
-        id="playlistName"
-        type="text"
-        maxlength="60"
-        placeholder="My late night mix"
-        required
-        autocomplete="off"
-      >
-
-      <div class="dialog-actions">
-
-        <button
-          id="cancelPlaylistBtn"
-          class="secondary-button"
-          type="button"
-        >
-          Cancel
-        </button>
-
-        <button
-          class="primary-button"
-          type="submit"
-        >
-          Save playlist
-        </button>
-
-      </div>
-
+      <div class="dialog-heading"><p class="eyebrow">YOUR COLLECTION</p><h2 id="playlistDialogTitle">Create playlist</h2></div>
+      <label for="playlistName">Playlist name</label><input id="playlistName" type="text" maxlength="60" placeholder="My late night mix" required autocomplete="off">
+      <div class="dialog-actions"><button id="cancelPlaylistBtn" class="secondary-button" type="button">Cancel</button><button class="primary-button" type="submit">Save playlist</button></div>
     </form>
-
   </dialog>
-
-  <!-- AUDIO -->
-
+  <dialog id="addTrackDialog" class="playlist-dialog">
+    <form id="addTrackForm">
+      <div class="dialog-heading"><p class="eyebrow">YOUR COLLECTION</p><h2>Add to playlist</h2></div>
+      <label for="addTrackSelect">Choose a playlist</label>
+      <select id="addTrackSelect" class="provider-select" required></select>
+      <div class="dialog-actions"><button id="cancelAddTrack" class="secondary-button" type="button">Cancel</button><button class="primary-button" type="submit">Add song</button></div>
+    </form>
+  </dialog>
   <audio id="audioPlayer" preload="metadata"></audio>
-
-  <!-- NOTIFICATIONS -->
-
-  <div
-    id="messageRegion"
-    class="message-region"
-    aria-live="polite"
-    aria-atomic="true"
-  ></div>
-
+  <div id="messageRegion" class="message-region" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
