@@ -1214,6 +1214,8 @@ function closePlaylistDialog() {
   if (dom.playlistDialog?.open) {
     dom.playlistDialog.close();
   }
+
+  state.pendingTrack = null;
 }
 
 function savePlaylistName(name, mode, playlistId = null) {
@@ -2324,6 +2326,10 @@ function setupPlaylistEvents() {
   byId("cancelAddTrack")?.addEventListener("click", () => {
     state.pendingTrack = null;
     dom.addTrackDialog?.close();
+  });
+
+  dom.addTrackDialog?.addEventListener("cancel", () => {
+    state.pendingTrack = null;
   });
 
   dom.addTrackDialog?.addEventListener("click", event => {
