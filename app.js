@@ -2364,7 +2364,6 @@ function setupPlaylistEvents() {
     renderAll();
     notify(`Added to "${playlist.name}".`, "success");
   });
-  byId("cancelPlaylistBtnBottom")?.addEventListener("click", closePlaylistDialog);
 
   dom.playlistDialog?.addEventListener("click", event => {
     if (event.target === dom.playlistDialog) {
