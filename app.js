@@ -2371,6 +2371,10 @@ function setupPlaylistEvents() {
     }
   });
 
+  dom.playlistDialog?.addEventListener("cancel", () => {
+    state.pendingTrack = null;
+  });
+
   dom.playlistForm?.addEventListener("submit", event => {
     event.preventDefault();
 
