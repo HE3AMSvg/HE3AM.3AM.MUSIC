@@ -8,7 +8,7 @@
 /* ---------------- CONFIG ---------------- */
 
 const APP_NAME = "HE3AM";
-const API_PROXY = "https://he3am.ghostrip82.workers.dev";
+const API_PROXY = window.HE3AM_CONFIG?.apiBaseUrl || "https://he3am.ghostrip82.workers.dev";
 const STORAGE_KEY = "pulseMusic";
 const AUDIUS_DIRECT_API = "https://api.audius.co/v1";
 
@@ -263,27 +263,10 @@ function notify(message, type = "info", timeout = 3200) {
 /* ---------------- API ---------------- */
 
 async function fetchJSON(url, options = {}) {
-  const controller = new AbortController();
-
-  const timeout = window.setTimeout(
-    () => controller.abort(),
-    REQUEST_TIMEOUT
-  );
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`Request failed (${response.status}).`);
-    }
-
-    return await response.json();
-  } finally {
-    window.clearTimeout(timeout);
-  }
+  return window.HE3AM.services.api.get(url, {
+    ...options,
+    timeout: REQUEST_TIMEOUT
+  });
 }
 
 function buildQueryURL(base, path, query) {
@@ -923,7 +906,7 @@ function loadState() {
   let raw;
 
   try {
-    raw = localStorage.getItem(STORAGE_KEY);
+    raw = window.HE3AM.services.library.readRaw(STORAGE_KEY);
   } catch (error) {
     console.warn("Local storage is unavailable.", error);
     return;
@@ -987,7 +970,13 @@ function saveState() {
   };
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const saved = window.HE3AM.services.library.writeRaw(
+      STORAGE_KEY,
+      JSON.stringify(payload)
+    );
+    if (!saved) {
+      throw new Error("Browser storage is unavailable or full.");
+    }
   } catch (error) {
     console.error("Could not save state:", error);
     notify("Could not save data. Browser storage may be full.", "error");
